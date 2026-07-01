@@ -98,7 +98,7 @@
         setLoadingRoadmap(true);
         setCompileProgress("🧠 Planner Agent: Building course syllabus...");
         try {
-          const res = await fetch("/courses/generate", {
+          const res = await fetch("/api/courses/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ topic: newTopic, level: "beginner" })
@@ -123,7 +123,7 @@
              setCompileProgress(`⚙️ Compiling chapters in background... (${i + 1}/${total}) - ${ch.title}`);
              
              try {
-               const chRes = await fetch(`/chapters/${ch.id}/generate`, {
+               const chRes = await fetch(`/api/chapters/${ch.id}/generate`, {
                  method: "POST",
                  headers: { "Content-Type": "application/json" },
                  body: JSON.stringify({
