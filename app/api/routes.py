@@ -145,20 +145,32 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                 except Exception as org_err:
                     logger.error(f"Organizer failed: {org_err}")
 
-        # 3. Writer & Reviewer loop
-        max_attempts = 3
+        # 3. Writer (+ optional Reviewer loop)
+        # quick_mode=True skips reviewer: 1 Groq call per chapter instead of 2
+        # This halves rate limit pressure when the frontend compiles all chapters in background
+        max_attempts = 1 if request.quick_mode else 3
         current_style = "Format sections as clean Markdown, include clear section headings, explanations, and code examples."
         last_lesson = None
         chapter_detail = None
 
         for attempt in range(1, max_attempts + 1):
-            logger.info(f"Attempt {attempt}/{max_attempts} to write lesson...")
+            logger.info(f"Attempt {attempt}/{max_attempts} to write lesson (quick_mode={request.quick_mode})...")
             try:
                 last_lesson = writer_service.write_lesson(
                     topic=chapter_title,
                     knowledge=knowledge_block,
                     style_template=current_style
                 )
+                if request.quick_mode:
+                    # Skip reviewer in quick mode — accept writer's draft directly
+                    chapter_detail = {
+                        "chapter_id": chapter_id,
+                        "course_id": course_id,
+                        "title": last_lesson.get("chapter", chapter_title),
+                        "introduction": last_lesson.get("introduction", ""),
+                        "sections": last_lesson.get("sections", [])
+                    }
+                    break
                 review_result = reviewer_service.review_lesson(
                     topic=chapter_title,
                     lesson_markdown=json.dumps(last_lesson),
@@ -180,6 +192,7 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                     current_style = f"{current_style}\n\nFeedback: {review_result.get('feedback')}"
             except Exception as loop_err:
                 logger.error(f"Writer/reviewer loop error on attempt {attempt}: {loop_err}")
+
 
         if not chapter_detail:
             logger.warning("Falling back to last draft.")

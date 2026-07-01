@@ -176,15 +176,16 @@ class GroqService:
                 return chat_completion.choices[0].message.content
             except Exception as e:
                 error_str = str(e)
-                # Handle rate limit (429) with exponential backoff
+                # Handle rate limit (429) with smart backoff
                 if "429" in error_str or "rate_limit_exceeded" in error_str:
-                    # Try to parse the retry-after seconds from the error message
-                    wait_seconds = 30 * attempt  # default backoff: 30s, 60s, 90s
+                    # Parse the retry-after seconds from the error message
+                    wait_seconds = 15 * attempt  # default: 15s, 30s, 45s
                     match = re.search(r"try again in (\d+)m?(\d+\.?\d*)s", error_str)
                     if match:
                         mins = int(match.group(1)) if match.group(1) else 0
                         secs = float(match.group(2)) if match.group(2) else 0
-                        wait_seconds = int(mins) * 60 + int(secs) + 5  # +5s buffer
+                        parsed = int(mins) * 60 + int(secs) + 3  # +3s buffer
+                        wait_seconds = min(parsed, 30)  # cap at 30s max
                     if attempt < max_retries:
                         logger.warning(f"Groq rate limit hit (attempt {attempt}/{max_retries}). Waiting {wait_seconds}s before retry...")
                         time.sleep(wait_seconds)

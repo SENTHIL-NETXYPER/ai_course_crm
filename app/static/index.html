@@ -129,7 +129,8 @@
                  body: JSON.stringify({
                    course_id: courseObj.id,
                    chapter_title: ch.title,
-                   regenerate: false
+                   regenerate: false,
+                   quick_mode: true   // skip reviewer: 1 Groq call/chapter vs 2, halves rate limit pressure
                  })
                });
                if (chRes.ok) {
@@ -139,6 +140,8 @@
              } catch (err) {
                console.error(`Failed compiling chapter ${ch.id}`, err);
              }
+             // 12s gap between chapters → stays well under Groq's 30 RPM limit
+             if (i < total - 1) await new Promise(r => setTimeout(r, 12000));
           }
           setCompileProgress("✅ All chapters compiled and ready!");
           setTimeout(() => setCompileProgress(""), 4000);
