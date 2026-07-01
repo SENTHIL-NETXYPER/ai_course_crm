@@ -176,8 +176,16 @@ class GroqService:
                 return chat_completion.choices[0].message.content
             except Exception as e:
                 error_str = str(e)
+                # Handle JSON validation failure
+                if "json_validate_failed" in error_str or "Failed to generate JSON" in error_str:
+                    logger.warning(f"Groq JSON validation failed (attempt {attempt}/{max_retries}). Retrying WITHOUT JSON mode...")
+                    if "response_format" in kwargs:
+                        del kwargs["response_format"]
+                    if attempt < max_retries:
+                        # We can retry immediately without waiting
+                        continue
                 # Handle rate limit (429) with smart backoff
-                if "429" in error_str or "rate_limit_exceeded" in error_str:
+                elif "429" in error_str or "rate_limit_exceeded" in error_str:
                     # Parse the retry-after seconds from the error message
                     wait_seconds = 15 * attempt  # default: 15s, 30s, 45s
                     match = re.search(r"try again in (\d+)m?(\d+\.?\d*)s", error_str)

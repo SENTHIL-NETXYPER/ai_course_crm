@@ -28,3 +28,10 @@ Instructions:
 }}
 
 Ensure the output is valid JSON and contains only the JSON object.
+
+CRITICAL JSON ESCAPING RULES:
+1. The output MUST be a single, valid JSON object matching the schema above.
+2. ALL double quotes (") inside the JSON string values (like "content" or "introduction") MUST be escaped as \" (e.g. System.out.println(\"Hello\");).
+3. Do NOT use literal/raw newlines (linebreaks) inside string values. Escape all newlines as \n (e.g. "Line 1\nLine 2").
+4. Do NOT use Python-style triple quotes (like """) or unescaped control characters.
+5. Ensure all brackets, braces, and quotes are properly closed.
