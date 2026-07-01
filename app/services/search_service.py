@@ -58,18 +58,18 @@ class SearchService:
         # If both failed (e.g. rate-limit or no internet), return mock data for testing
         if not output:
             logger.info("Both search methods returned no results. Falling back to generated mock search results.")
-            slug = query.lower().replace(" ", "_")
             dash_slug = query.lower().replace(" ", "-")
+            # Use GeeksForGeeks and MDN as they have broad coverage and stable URL patterns
             output = [
-                {
-                    "title": f"{query} - W3Schools",
-                    "url": f"https://www.w3schools.com/python/{slug}.asp",
-                    "snippet": f"A guide on how to work with {query}."
-                },
                 {
                     "title": f"Understanding {query} - GeeksforGeeks",
                     "url": f"https://www.geeksforgeeks.org/{dash_slug}/",
                     "snippet": f"Detailed tutorial and examples for {query}."
+                },
+                {
+                    "title": f"{query} - MDN Web Docs",
+                    "url": f"https://developer.mozilla.org/en-US/docs/Learn/{dash_slug}",
+                    "snippet": f"Complete reference and guide on {query}."
                 }
             ]
 

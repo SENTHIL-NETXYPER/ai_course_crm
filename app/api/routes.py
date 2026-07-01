@@ -146,9 +146,8 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                     logger.error(f"Organizer failed: {org_err}")
 
         # 3. Writer (+ optional Reviewer loop)
-        # quick_mode=True skips reviewer: 1 Groq call per chapter instead of 2
-        # This halves rate limit pressure when the frontend compiles all chapters in background
-        max_attempts = 1 if request.quick_mode else 3
+        # quick_mode=True skips reviewer but still allows up to 3 writer retries in case of empty sections
+        max_attempts = 3 if request.quick_mode else 3
         current_style = "Format sections as clean Markdown, include clear section headings, explanations, and code examples."
         last_lesson = None
         chapter_detail = None
@@ -161,6 +160,13 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                     knowledge=knowledge_block,
                     style_template=current_style
                 )
+
+                # Sanity-check: if sections is empty, treat as a failure and retry
+                if not last_lesson.get("sections"):
+                    logger.warning(f"Writer returned empty sections on attempt {attempt}. Retrying with self-sufficient prompt...")
+                    knowledge_block = f"Write a comprehensive educational lesson on '{chapter_title}' covering: definition and overview, key concepts, syntax and usage, practical examples with code, common best practices, and a summary. Do not rely on external sources."
+                    raise ValueError("Writer returned empty sections — retrying")
+
                 if request.quick_mode:
                     # Skip reviewer in quick mode — accept writer's draft directly
                     chapter_detail = {
