@@ -104,29 +104,54 @@
             body: JSON.stringify({ topic: newTopic, level: "beginner" })
           });
           if (!res.ok) throw new Error("Course generation failed.");
-          const courseData = await res.json(); // returns CourseWithLessons
+          const courseData = await res.json(); 
           
-          // Store all compiled lessons in a map keyed by chapter_id string
-          setLessonCache(courseData.lessons || {});
-          
-          // Store course (without lessons in the course object to keep it clean)
           const courseObj = { id: courseData.id, course: courseData.course, chapters: courseData.chapters };
           setCourses(prev => [courseObj, ...prev]);
           setActiveCourse(courseObj);
           setActiveChapter(null);
           setActiveLesson(null);
           setNewTopic("");
-          setCompileProgress("");
+          setLessonCache({}); // clear cache for new course
+          
+          // Phase 2: Orchestrate Background Compilation (avoids Render 100s timeout)
+          setLoadingRoadmap(false); // Let the user see the syllabus immediately
+          
+          const total = courseObj.chapters.length;
+          for (let i = 0; i < total; i++) {
+             const ch = courseObj.chapters[i];
+             setCompileProgress(`⚙️ Compiling chapters in background... (${i + 1}/${total}) - ${ch.title}`);
+             
+             try {
+               const chRes = await fetch(`/chapters/${ch.id}/generate`, {
+                 method: "POST",
+                 headers: { "Content-Type": "application/json" },
+                 body: JSON.stringify({
+                   course_id: courseObj.id,
+                   chapter_title: ch.title,
+                   regenerate: false
+                 })
+               });
+               if (chRes.ok) {
+                 const lesson = await chRes.json();
+                 setLessonCache(prev => ({...prev, [String(ch.id)]: lesson}));
+               }
+             } catch (err) {
+               console.error(`Failed compiling chapter ${ch.id}`, err);
+             }
+          }
+          setCompileProgress("✅ All chapters compiled and ready!");
+          setTimeout(() => setCompileProgress(""), 4000);
+          
         } catch (err) {
           setCompileProgress("");
-          alert("Error generating course. Please check server connection.");
-        } finally {
           setLoadingRoadmap(false);
+          alert("Error generating course. Please check server connection.");
         }
       };
 
       const handleSelectChapter = (chapter) => {
-        // Instantly load from memory — no network call needed
+        // Instantly load from memory if compiled, else show loading state
         setActiveChapter(chapter);
         const lesson = lessonCache[String(chapter.id)];
         if (lesson) {
@@ -138,7 +163,7 @@
         } else {
           setActiveLesson({
             chapter: chapter.title,
-            introduction: "This chapter could not be compiled. Please regenerate the course.",
+            introduction: "⚙️ This chapter is currently compiling in the background. Please wait a moment...",
             sections: []
           });
         }
@@ -265,24 +290,40 @@
             
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {activeCourse && activeCourse.chapters ? (
-                activeCourse.chapters.map(ch => (
-                  <button
-                    key={ch.id}
-                    onClick={() => handleSelectChapter(ch)}
-                    className={`w-full text-left p-4 rounded-xl border transition flex flex-col space-y-1 ${
-                      activeChapter?.id === ch.id
-                        ? "bg-white dark:bg-slate-800 border-indigo-500 shadow-md shadow-indigo-50 dark:shadow-none"
-                        : "bg-slate-50 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800"
-                    }`}
-                  >
-                    <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
-                      Chapter {ch.id}
-                    </span>
-                    <span className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                      {ch.title}
-                    </span>
-                  </button>
-                ))
+                <div className="flex-1 overflow-y-auto">
+                      {activeCourse.chapters.map((ch, idx) => {
+                        const isReady = !!lessonCache[String(ch.id)];
+                        return (
+                          <button 
+                            key={ch.id}
+                            onClick={() => handleSelectChapter(ch)}
+                            className={`w-full text-left p-4 mb-3 rounded-xl border transition-all duration-200 group relative overflow-hidden ${
+                              activeChapter?.id === ch.id 
+                                ? 'bg-indigo-50 border-indigo-200 shadow-sm dark:bg-indigo-900/20 dark:border-indigo-800' 
+                                : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md dark:bg-slate-800 dark:border-slate-700 dark:hover:border-indigo-500'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className={`text-xs font-bold uppercase tracking-wider ${
+                                activeChapter?.id === ch.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'
+                              }`}>
+                                Chapter {idx + 1}
+                              </span>
+                              {isReady ? (
+                                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium dark:bg-emerald-900/30 dark:text-emerald-400">Ready</span>
+                              ) : (
+                                <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium animate-pulse dark:bg-slate-800 dark:text-slate-400">Wait...</span>
+                              )}
+                            </div>
+                            <h4 className={`font-semibold ${
+                              activeChapter?.id === ch.id ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-200'
+                            }`}>
+                              {ch.title}
+                            </h4>
+                          </button>
+                        );
+                      })}
+                    </div>
               ) : (
                 <div className="text-center text-slate-400 text-sm py-8 font-light">
                   Select a course on the left to see the chapter structure.
