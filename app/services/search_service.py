@@ -44,8 +44,10 @@ class SearchService:
                     if href:
                         # Decode DuckDuckGo redirect wrapper to get the real URL
                         real_url = self._decode_ddg_url(href.strip())
-                        # Skip if still not a valid http/https URL
+                        # Skip if still not a valid http/https URL, or if it is a DuckDuckGo ad/js link
                         if not real_url.startswith("http://") and not real_url.startswith("https://"):
+                            continue
+                        if "duckduckgo.com" in real_url or ".js" in real_url:
                             continue
                         output.append({
                             "title": title,
