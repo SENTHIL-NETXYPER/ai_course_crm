@@ -8,7 +8,7 @@ An intelligent, multi-agent course generation platform that builds complete cour
 
 - 🧠 **Multi-Agent Architecture** — Planner → Researcher → Scraper → Organizer → Writer → Reviewer pipeline
 - 📚 **Full Course Compilation** — Generates entire textbooks chapter-by-chapter automatically
-- ⚡ **Smart Caching** — SQLite database prevents redundant AI calls; cache-hits serve instantly
+- ⚡ **Stateless & Parallel** — Zero database dependencies. Compiles all chapters in parallel for maximum speed.
 - 🔄 **Self-Reflection Loop** — Writer agent iterates on reviewer feedback up to 3 times before saving
 - 🌐 **REST API-First Design** — Every agent is independently testable via Swagger UI (`/docs`)
 - 🎨 **Immersive Frontend** — React reader interface with dark mode, animations, and live agent status
@@ -20,8 +20,7 @@ An intelligent, multi-agent course generation platform that builds complete cour
 | Layer | Technology |
 |-------|-----------|
 | Backend | FastAPI (Python) |
-| AI / LLM | Groq (Llama 3.3) |
-| Database | SQLite via Python `sqlite3` |
+| AI / LLM | Groq (Llama 3.1 8B Instant) |
 | Scraping | BeautifulSoup + httpx |
 | Frontend | React (CDN) + Vanilla CSS |
 | Logging | Loguru |
@@ -81,10 +80,8 @@ Swagger docs available at [http://localhost:8000/docs](http://localhost:8000/doc
 The full REST API follows a modular-first testing design:
 
 ```
-POST /courses/generate      → Planner Agent creates course roadmap
-GET  /courses/{course_id}   → Fetch course syllabus + chapter list
-POST /chapters/{id}/generate → Compile a chapter (Research → Write → Review)
-GET  /chapters/{id}         → Read compiled lesson content
+POST /courses/generate      → Planner Agent creates course, compiles ALL chapters in parallel, and returns Course + Lessons
+POST /chapters/{id}/generate → Compile a single chapter (Research → Scrape → Organize → Write → Review)
 ```
 
 ### Standalone Agent Endpoints (for isolated testing)
@@ -119,13 +116,10 @@ course-ai/
 │   ├── services/
 │   │   ├── groq_service.py     # Groq LLM client wrapper
 │   │   └── scrape_service.py   # Web scraper (httpx + BeautifulSoup)
-│   ├── database/
-│   │   └── manager.py          # SQLite cache (roadmaps + lessons)
 │   ├── schemas/                # Pydantic request/response models
 │   ├── prompts/                # Prompt templates for each agent
 │   └── static/
 │       └── index.html          # React frontend (single-page app)
-├── data/                       # SQLite DB + scraped content (gitignored)
 ├── tests/                      # Test suite
 ├── .env.example                # Environment variable template
 ├── .gitignore
@@ -147,7 +141,7 @@ course-ai/
    - **Environment Variables**: Add `GROQ_API_KEY`
 5. Click **Deploy**.
 
-> ⚠️ **Note**: SQLite is ephemeral on Render's free tier. For production persistence, migrate to **PostgreSQL** (Supabase or Render's managed DB).
+> 💡 **Note on Hosting**: The app is 100% stateless! You do not need to worry about databases or Render's ephemeral filesystem wipes. All chapters are compiled and held in the user's browser memory dynamically.
 
 ---
 
