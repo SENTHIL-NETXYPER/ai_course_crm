@@ -9,3 +9,5 @@ beautifulsoup4==4.15.0
 loguru==0.7.2
 lxml==6.0.3
 python-multipart==0.0.24
+markdownify==0.14.1
+duckduckgo-search==7.5.3
