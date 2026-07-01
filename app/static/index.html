@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course AI - Immersive Learning Platform</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind Config -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Outfit', 'system-ui', 'sans-serif'],
+            body: ['Plus Jakarta Sans', 'sans-serif'],
+            mono: ['Fira Code', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+  <!-- React & Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Custom Styling -->
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      font-family: 'Outfit', sans-serif;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(156, 163, 175, 0.3);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(156, 163, 175, 0.5);
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .dark .glass {
+      background: rgba(17, 24, 39, 0.7);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [courses, setCourses] = useState([]);
+      const [newTopic, setNewTopic] = useState("");
+      const [activeCourse, setActiveCourse] = useState(null);
+      const [activeChapter, setActiveChapter] = useState(null);
+      const [activeLesson, setActiveLesson] = useState(null);
+      
+      const [loadingRoadmap, setLoadingRoadmap] = useState(false);
+      const [loadingLesson, setLoadingLesson] = useState(false);
+      const [agentStep, setAgentStep] = useState("");
+      const [darkMode, setDarkMode] = useState(false);
+
+      // Load all roadmaps on start
+      useEffect(() => {
+        fetchCourses();
+      }, []);
+
+      const fetchCourses = async () => {
+        try {
+          const res = await fetch("/courses");
+          const data = await res.json();
+          setCourses(data);
+          if (data.length > 0 && !activeCourse) {
+            loadCourse(data[0]);
+          }
+        } catch (err) {
+          console.error("Error loading courses:", err);
+        }
+      };
+
+      const loadCourse = (courseObj) => {
+        setActiveCourse(courseObj);
+        setActiveChapter(null);
+        setActiveLesson(null);
+      };
+
+      const handleGenerateRoadmap = async (e) => {
+        e.preventDefault();
+        if (!newTopic.trim()) return;
+        setLoadingRoadmap(true);
+        try {
+          const res = await fetch("/courses/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic: newTopic, level: "beginner" })
+          });
+          const result = await res.json();
+          if (result.success) {
+            // Load the full syllabus from GET /courses/{course_id}
+            const courseRes = await fetch(`/courses/${result.course_id}`);
+            const courseData = await courseRes.json();
+            setCourses(prev => [courseData, ...prev]);
+            setActiveCourse(courseData);
+          }
+          setNewTopic("");
+        } catch (err) {
+          alert("Error generating course. Please check server connection.");
+        } finally {
+          setLoadingRoadmap(false);
+        }
+      };
+
+      const handleSelectChapter = async (chapter) => {
+        setActiveChapter(chapter);
+        setActiveLesson(null);
+        setLoadingLesson(true);
+        setAgentStep("⚙️ Running Agentic Compiler loop for this chapter...");
+        
+        try {
+          // Step 1: Compile the chapter lesson (runs research -> scrape -> organize -> write-review loop)
+          const compileRes = await fetch(`/chapters/${chapter.id}/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ course_id: activeCourse.id, regenerate: false })
+          });
+          if (!compileRes.ok) {
+            throw new Error("Failed to compile chapter lesson.");
+          }
+          
+          setAgentStep("📖 Loading compiled chapter lesson content...");
+          // Step 2: Retrieve compiled lesson detail
+          const res = await fetch(`/chapters/${chapter.id}?course_id=${activeCourse.id}`);
+          if (!res.ok) {
+            throw new Error(`Failed to load chapter: ${res.status}`);
+          }
+          const lessonData = await res.json();
+          
+          setActiveLesson({
+            chapter: lessonData.title,
+            introduction: lessonData.introduction,
+            sections: lessonData.sections
+          });
+        } catch (err) {
+          console.error("Failed to load compiled chapter:", err);
+          alert("Failed to load chapter lesson.");
+        } finally {
+          setLoadingLesson(false);
+          setAgentStep("");
+        }
+      };
+
+      const toggleDarkMode = () => {
+        setDarkMode(!darkMode);
+        document.documentElement.classList.toggle('dark');
+      };
+
+      // Helper function to format markdown strings cleanly (simple rendering for UI demo)
+      const renderContent = (content) => {
+        if (!content) return "";
+        // Replace python code blocks
+        let html = content
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+          
+        html = html.replace(/```python([\s\S]*?)```/g, '<pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-sm my-4 overflow-x-auto border border-slate-800">$1</pre>');
+        html = html.replace(/`([^`]+)`/g, '<code class="bg-slate-100 dark:bg-slate-800 text-pink-600 dark:text-pink-400 px-1.5 py-0.5 rounded font-mono text-sm">$1</code>');
+        html = html.replace(/\n\n/g, '<p class="my-3 leading-relaxed font-body"></p>');
+        html = html.replace(/###\s*(.*)/g, '<h4 class="text-lg font-bold text-slate-800 dark:text-slate-200 mt-4 mb-2">$1</h4>');
+        return <div dangerouslySetInnerHTML={{ __html: html }} />;
+      };
+
+      return (
+        <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+          
+          {/* LEFT SIDEBAR: COURSE LIST */}
+          <aside className="w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col z-10">
+            {/* Logo */}
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="h-8 w-8 bg-gradient-to-tr from-indigo-500 to-violet-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-md shadow-indigo-200 dark:shadow-none">
+                  A
+                </div>
+                <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-indigo-500 to-violet-600 bg-clip-text text-transparent">
+                  Course AI
+                </span>
+              </div>
+              <button 
+                onClick={toggleDarkMode}
+                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
+                title="Toggle Theme"
+              >
+                {darkMode ? "☀️" : "🌙"}
+              </button>
+            </div>
+
+            {/* Create Course Form */}
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+              <form onSubmit={handleGenerateRoadmap} className="space-y-2">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  Generate New Course
+                </label>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. Python, SQL..."
+                    value={newTopic}
+                    onChange={(e) => setNewTopic(e.target.value)}
+                    disabled={loadingRoadmap}
+                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={loadingRoadmap}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition shadow-md shadow-indigo-100 dark:shadow-none flex items-center justify-center disabled:opacity-50"
+                  >
+                    {loadingRoadmap ? (
+                      <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : "+"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Courses List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-2">
+                Active Courses
+              </span>
+              {courses.length === 0 ? (
+                <div className="text-center text-slate-400 dark:text-slate-600 text-sm py-8 font-light">
+                  No courses generated yet. Create one above!
+                </div>
+              ) : (
+                courses.map(course => (
+                  <button
+                    key={course.id}
+                    onClick={() => loadCourse(course)}
+                    className={`w-full text-left px-4 py-3 rounded-xl transition flex items-center justify-between ${
+                      activeCourse?.id === course.id
+                        ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 font-medium"
+                        : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    <span className="truncate capitalize">{course.title}</span>
+                    <span className="text-xs px-2 py-0.5 bg-slate-200 dark:bg-slate-800 rounded-full text-slate-500 font-mono">
+                      {course.chapters.length} Ch
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </aside>
+
+          {/* MIDDLE SIDEBAR: CHAPTER LIST */}
+          <aside className="w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex flex-col z-0">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">
+                Course Syllabus
+              </span>
+              <h2 className="text-xl font-bold capitalize text-slate-800 dark:text-slate-100 truncate">
+                {activeCourse ? activeCourse.title : "Select a Course"}
+              </h2>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {activeCourse && activeCourse.chapters ? (
+                activeCourse.chapters.map(ch => (
+                  <button
+                    key={ch.id}
+                    onClick={() => handleSelectChapter(ch)}
+                    className={`w-full text-left p-4 rounded-xl border transition flex flex-col space-y-1 ${
+                      activeChapter?.id === ch.id
+                        ? "bg-white dark:bg-slate-800 border-indigo-500 shadow-md shadow-indigo-50 dark:shadow-none"
+                        : "bg-slate-50 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800"
+                    }`}
+                  >
+                    <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                      Chapter {ch.id}
+                    </span>
+                    <span className="font-bold text-sm text-slate-800 dark:text-slate-200">
+                      {ch.title}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="text-center text-slate-400 text-sm py-8 font-light">
+                  Select a course on the left to see the chapter structure.
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {/* MAIN READER PANEL */}
+          <main className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
+            {loadingRoadmap ? (
+              /* Immersive Course Compilation Loader */
+              <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-sm z-20">
+                <div className="max-w-md w-full p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-xl flex flex-col items-center text-center">
+                  <div className="relative h-16 w-16 mb-6">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75 animate-ping"></span>
+                    <span className="relative inline-flex rounded-full h-16 w-16 bg-indigo-600 flex items-center justify-center text-white text-xl">
+                      🚀
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">
+                    Compiling Course Textbook...
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 leading-relaxed font-body">
+                    Orchestrating our Agent network to build a fully structured syllabus and pre-compile all lessons.
+                  </p>
+                  <div className="w-full bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2 text-left">
+                    <div className="flex items-center space-x-2 text-xs font-semibold font-mono text-indigo-600 dark:text-indigo-400">
+                      <span className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                      <span>Planner Agent: Drafting chapters syllabus...</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-xs font-semibold font-mono text-indigo-600 dark:text-indigo-400">
+                      <span className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                      <span>Researcher & Scraper: Gathering web data...</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-xs font-semibold font-mono text-indigo-600 dark:text-indigo-400">
+                      <span className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                      <span>Writer & Reviewer: Writing sections & refactoring...</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : loadingLesson ? (
+              /* Immersive Loading Screen showing Agent Phases */
+              <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-sm z-20">
+                <div className="max-w-md w-full p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-xl flex flex-col items-center text-center">
+                  <div className="relative h-16 w-16 mb-6">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75 animate-ping"></span>
+                    <span className="relative inline-flex rounded-full h-16 w-16 bg-indigo-600 flex items-center justify-center text-white text-xl">
+                      ⚙️
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-2">
+                    Running Agentic Pipeline...
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                    Collaborating multi-agent network is fetching, cleaning, and verifying information.
+                  </p>
+                  
+                  {/* Pipeline Step Visualizer */}
+                  <div className="w-full space-y-3 text-left bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center space-x-2 text-xs font-semibold font-mono">
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span className="text-slate-600 dark:text-slate-400">{agentStep}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : activeLesson ? (
+              /* Reader View */
+              <div className="flex-1 overflow-y-auto p-8 lg:p-12 max-w-4xl mx-auto w-full">
+                
+                {/* Header */}
+                <div className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-6">
+                  <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block mb-2 font-mono">
+                    {activeCourse?.title} &bull; Chapter {activeChapter?.id}
+                  </span>
+                  <h1 className="text-3xl lg:text-4xl font-extrabold text-slate-800 dark:text-slate-100 mb-4">
+                    {activeLesson.chapter}
+                  </h1>
+                  <p className="text-lg text-slate-500 dark:text-slate-400 leading-relaxed font-body">
+                    {activeLesson.introduction}
+                  </p>
+                </div>
+
+                {/* Section Content cards */}
+                <div className="space-y-8">
+                  {activeLesson.sections.map(section => (
+                    <article 
+                      key={section.order} 
+                      className="bg-white dark:bg-slate-900 rounded-2xl p-6 lg:p-8 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center space-x-3">
+                        <span className="h-6 w-6 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-mono font-bold">
+                          {section.order}
+                        </span>
+                        <span>{section.title}</span>
+                      </h3>
+                      <div className="text-slate-600 dark:text-slate-300">
+                        {renderContent(section.content)}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+
+              </div>
+            ) : (
+              /* Welcome screen when no chapter is loaded */
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 dark:bg-slate-950">
+                <div className="max-w-md">
+                  <div className="h-20 w-20 bg-indigo-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center text-indigo-600 text-3xl mx-auto mb-6 shadow-inner">
+                    📖
+                  </div>
+                  <h2 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 mb-2">
+                    Welcome to Course Reader
+                  </h2>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed mb-6 font-body">
+                    Select a course on the left panel, and then click any chapter in the syllabus outline to load the interactive lesson material.
+                  </p>
+                </div>
+              </div>
+            )}
+          </main>
+
+        </div>
+      );
+    }
+
+    const rootElement = document.getElementById('root');
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(<App />);
+  </script>
+</body>
+</html>

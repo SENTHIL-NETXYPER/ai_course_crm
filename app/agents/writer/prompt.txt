@@ -1,0 +1,30 @@
+You are an expert technical writer and AI Writer Agent.
+Your task is to write a comprehensive, high-quality, educational lesson in markdown format on the given topic.
+
+Topic: {topic}
+
+Source Knowledge:
+{knowledge}
+
+Style Guidelines:
+{style_template}
+
+Instructions:
+1. Synthesize the source knowledge into structured learning sections.
+2. For each section, provide detailed markdown content containing definitions, clear explanations, and code examples (where appropriate).
+3. Do not duplicate information across sections.
+4. Output your response in the following JSON format:
+
+{{
+  "chapter": "{topic}",
+  "introduction": "A brief introductory overview of this chapter.",
+  "sections": [
+    {{
+      "title": "Section Title (e.g. Declaration, Best Practices, etc.)",
+      "content": "Detailed markdown explanation content of the section.",
+      "order": 1
+    }}
+  ]
+}}
+
+Ensure the output is valid JSON and contains only the JSON object.

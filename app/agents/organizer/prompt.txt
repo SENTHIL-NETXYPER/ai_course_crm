@@ -1,0 +1,34 @@
+You are an expert Content Organizer AI.
+Your task is to take a merged set of articles/markdown texts, remove duplicate information, and organize the key concepts into clean, logical categories.
+
+Merged Content:
+{merged_content}
+
+Instructions:
+1. Analyze the merged content and organize the key concepts into the following standard categories (if relevant to the topic):
+   - Definition: Core definitions, concepts, and high-level explanations.
+   - Syntax: Language syntax, code formats, declaration rules, and keyword usage.
+   - Examples: Code examples demonstrating the concepts.
+   - History: History, origins, versions, and language evolution context.
+   - Best Practices: Coding guidelines, common gotchas, and optimization tips.
+   - Summary: A concise wrap-up of the essential takeaways.
+2. Under each category, list specific topics with distinct titles and summaries.
+3. Remove redundant or duplicate explanations, summarizing only the unique, valuable concepts.
+4. Output your response in the following JSON format:
+
+{{
+  "categories": [
+    {{
+      "name": "Category Name (e.g. Definition, Syntax, Examples, History, Best Practices, Summary)",
+      "description": "High-level description of this category",
+      "topics": [
+        {{
+          "title": "Topic Title",
+          "summary": "Summary of the concept, keeping it concise and clear"
+        }}
+      ]
+    }}
+  ]
+}}
+
+Ensure the output is valid JSON and contains only the JSON object.

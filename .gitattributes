@@ -1,0 +1,9 @@
+# Normalize line endings to LF on commit
+* text=auto eol=lf
+
+# Explicitly handle binary files
+*.db binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
