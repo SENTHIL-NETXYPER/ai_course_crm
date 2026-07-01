@@ -1,4 +1,6 @@
 import os
+import time
+import re
 from groq import Groq
 from app.core.logger import logger
 from dotenv import load_dotenv
@@ -16,7 +18,7 @@ class GroqService:
             logger.info("GroqService initialized successfully with API key.")
             self.client = Groq(api_key=self.api_key)
 
-    def generate(self, prompt: str, system_prompt: str = None, model: str = "llama-3.3-70b-versatile", response_format: dict = None) -> str:
+    def generate(self, prompt: str, system_prompt: str = None, model: str = "llama-3.1-8b-instant", response_format: dict = None, max_retries: int = 3) -> str:
         if not self.client:
             logger.info("GroqService (MOCK MODE): Generating mock response for prompt.")
             if "course_name" in (system_prompt or "") or "structured-chat" in prompt:
@@ -164,13 +166,29 @@ class GroqService:
         if response_format:
             kwargs["response_format"] = response_format
 
-        try:
-            chat_completion = self.client.chat.completions.create(
-                messages=messages,
-                model=model,
-                **kwargs
-            )
-            return chat_completion.choices[0].message.content
-        except Exception as e:
-            logger.error(f"Error calling Groq API: {e}")
-            raise e
+        for attempt in range(1, max_retries + 1):
+            try:
+                chat_completion = self.client.chat.completions.create(
+                    messages=messages,
+                    model=model,
+                    **kwargs
+                )
+                return chat_completion.choices[0].message.content
+            except Exception as e:
+                error_str = str(e)
+                # Handle rate limit (429) with exponential backoff
+                if "429" in error_str or "rate_limit_exceeded" in error_str:
+                    # Try to parse the retry-after seconds from the error message
+                    wait_seconds = 30 * attempt  # default backoff: 30s, 60s, 90s
+                    match = re.search(r"try again in (\d+)m?(\d+\.?\d*)s", error_str)
+                    if match:
+                        mins = int(match.group(1)) if match.group(1) else 0
+                        secs = float(match.group(2)) if match.group(2) else 0
+                        wait_seconds = int(mins) * 60 + int(secs) + 5  # +5s buffer
+                    if attempt < max_retries:
+                        logger.warning(f"Groq rate limit hit (attempt {attempt}/{max_retries}). Waiting {wait_seconds}s before retry...")
+                        time.sleep(wait_seconds)
+                        continue
+                logger.error(f"Error calling Groq API (attempt {attempt}/{max_retries}): {e}")
+                if attempt == max_retries:
+                    raise e

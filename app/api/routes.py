@@ -169,18 +169,30 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
         except Exception as re_err:
             logger.error(f"Research failed for chapter {chapter_id}: {re_err}")
             
-        # 2. Scrape & Organize (Knowledge builder)
+        # 2. Scrape & Organize (Knowledge builder) - try each URL until one works
         knowledge_block = f"Core information about {chapter_title}."
         if urls:
-            try:
-                scraped_content = scrape_service.scrape(url=urls[0])
-                organized_data = organizer_service.organize_content(urls=[urls[0]])
-                knowledge_block = "\n\n".join([
-                    f"Category: {cat['name']}\n" + "\n".join([f"{t['title']}: {t['summary']}" for t in cat.get("topics", [])])
-                    for cat in organized_data.get("categories", [])
-                ])
-            except Exception as scr_err:
-                logger.error(f"Scraper/Organizer failed for chapter {chapter_id}: {scr_err}")
+            scraped_url = None
+            for candidate_url in urls:
+                try:
+                    logger.info(f"Scraper: Trying URL: {candidate_url}")
+                    scraped_content = scrape_service.scrape(url=candidate_url)
+                    scraped_url = candidate_url
+                    logger.info(f"Scraper: Successfully scraped {candidate_url}")
+                    break
+                except Exception as url_err:
+                    logger.warning(f"Scraper: Skipping {candidate_url} — {url_err}")
+                    continue
+                    
+            if scraped_url:
+                try:
+                    organized_data = organizer_service.organize_content(urls=[scraped_url])
+                    knowledge_block = "\n\n".join([
+                        f"Category: {cat['name']}\n" + "\n".join([f"{t['title']}: {t['summary']}" for t in cat.get("topics", [])])
+                        for cat in organized_data.get("categories", [])
+                    ])
+                except Exception as org_err:
+                    logger.error(f"Organizer failed for chapter {chapter_id}: {org_err}")
                 
         # 3. Writer & Reviewer (Self-Reflection Loop)
         max_attempts = 3
