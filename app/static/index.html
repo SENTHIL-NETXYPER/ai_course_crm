@@ -74,29 +74,16 @@
       const [activeCourse, setActiveCourse] = useState(null);
       const [activeChapter, setActiveChapter] = useState(null);
       const [activeLesson, setActiveLesson] = useState(null);
+      const [lessonCache, setLessonCache] = useState({}); // stores all lessons keyed by chapter_id
       
       const [loadingRoadmap, setLoadingRoadmap] = useState(false);
       const [loadingLesson, setLoadingLesson] = useState(false);
       const [agentStep, setAgentStep] = useState("");
       const [darkMode, setDarkMode] = useState(false);
+      const [compileProgress, setCompileProgress] = useState("");
 
-      // Load all roadmaps on start
-      useEffect(() => {
-        fetchCourses();
-      }, []);
-
-      const fetchCourses = async () => {
-        try {
-          const res = await fetch("/courses");
-          const data = await res.json();
-          setCourses(data);
-          if (data.length > 0 && !activeCourse) {
-            loadCourse(data[0]);
-          }
-        } catch (err) {
-          console.error("Error loading courses:", err);
-        }
-      };
+      // Stateless mode: no stored courses to load on start
+      useEffect(() => { setCourses([]); }, []);
 
       const loadCourse = (courseObj) => {
         setActiveCourse(courseObj);
@@ -104,10 +91,12 @@
         setActiveLesson(null);
       };
 
+
       const handleGenerateRoadmap = async (e) => {
         e.preventDefault();
         if (!newTopic.trim()) return;
         setLoadingRoadmap(true);
+        setCompileProgress("🧠 Planner Agent: Building course syllabus...");
         try {
           const res = await fetch("/courses/generate", {
             method: "POST",
@@ -115,52 +104,46 @@
             body: JSON.stringify({ topic: newTopic, level: "beginner" })
           });
           if (!res.ok) throw new Error("Course generation failed.");
-          const courseData = await res.json(); // returns Course directly
-          setCourses(prev => [courseData, ...prev]);
-          setActiveCourse(courseData);
+          const courseData = await res.json(); // returns CourseWithLessons
+          
+          // Store all compiled lessons in a map keyed by chapter_id string
+          setLessonCache(courseData.lessons || {});
+          
+          // Store course (without lessons in the course object to keep it clean)
+          const courseObj = { id: courseData.id, course: courseData.course, chapters: courseData.chapters };
+          setCourses(prev => [courseObj, ...prev]);
+          setActiveCourse(courseObj);
           setActiveChapter(null);
           setActiveLesson(null);
           setNewTopic("");
+          setCompileProgress("");
         } catch (err) {
+          setCompileProgress("");
           alert("Error generating course. Please check server connection.");
         } finally {
           setLoadingRoadmap(false);
         }
       };
 
-
-      const handleSelectChapter = async (chapter) => {
+      const handleSelectChapter = (chapter) => {
+        // Instantly load from memory — no network call needed
         setActiveChapter(chapter);
-        setActiveLesson(null);
-        setLoadingLesson(true);
-        setAgentStep("⚙️ Compiling lesson: Research → Scrape → Write → Review...");
-        
-        try {
-          // Single call — compile AND return ChapterDetail directly
-          const res = await fetch(`/chapters/${chapter.id}/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              course_id: activeCourse.id,
-              chapter_title: chapter.title,
-              regenerate: false
-            })
-          });
-          if (!res.ok) throw new Error("Chapter compilation failed.");
-          const lessonData = await res.json(); // returns ChapterDetail directly
+        const lesson = lessonCache[String(chapter.id)];
+        if (lesson) {
           setActiveLesson({
-            chapter: lessonData.title,
-            introduction: lessonData.introduction,
-            sections: lessonData.sections
+            chapter: lesson.title,
+            introduction: lesson.introduction,
+            sections: lesson.sections || []
           });
-        } catch (err) {
-          console.error("Failed to compile chapter:", err);
-          alert("Failed to generate chapter lesson. Try again.");
-        } finally {
-          setLoadingLesson(false);
-          setAgentStep("");
+        } else {
+          setActiveLesson({
+            chapter: chapter.title,
+            introduction: "This chapter could not be compiled. Please regenerate the course.",
+            sections: []
+          });
         }
       };
+
 
 
       const toggleDarkMode = () => {
@@ -342,30 +325,7 @@
                   </div>
                 </div>
               </div>
-            ) : loadingLesson ? (
-              /* Immersive Loading Screen showing Agent Phases */
-              <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-sm z-20">
-                <div className="max-w-md w-full p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-xl flex flex-col items-center text-center">
-                  <div className="relative h-16 w-16 mb-6">
-                    <span className="absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75 animate-ping"></span>
-                    <span className="relative inline-flex rounded-full h-16 w-16 bg-indigo-600 flex items-center justify-center text-white text-xl">
-                      ⚙️
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-2">
-                    Running Agentic Pipeline...
-                  </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                    Collaborating multi-agent network is fetching, cleaning, and verifying information.
-                  </p>
-                  
-                  {/* Pipeline Step Visualizer */}
-                  <div className="w-full space-y-3 text-left bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center space-x-2 text-xs font-semibold font-mono">
-                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span className="text-slate-600 dark:text-slate-400">{agentStep}</span>
-                    </div>
-                  </div>
+                 </div>
                 </div>
               </div>
             ) : activeLesson ? (

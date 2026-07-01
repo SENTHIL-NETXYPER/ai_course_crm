@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Dict, Any
 
 class ChapterOutline(BaseModel):
     id: int = Field(..., description="The sequence ID of the chapter")
@@ -29,6 +29,12 @@ class ChapterDetail(BaseModel):
     title: str = Field(..., description="Title of the chapter")
     introduction: str = Field(..., description="Brief introductory overview")
     sections: List[SectionDetail] = Field(..., description="List of lesson sections")
+
+class CourseWithLessons(BaseModel):
+    id: str = Field(..., description="Slugified course ID")
+    course: str = Field(..., description="Course name")
+    chapters: List[ChapterOutline] = Field(..., description="Chapter outline list")
+    lessons: Dict[str, Any] = Field(default={}, description="Map of chapter_id -> compiled ChapterDetail")
 
 class CourseResearchResponse(BaseModel):
     course_id: str = Field(..., description="The course ID")

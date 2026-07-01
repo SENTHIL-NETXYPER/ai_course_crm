@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
 
@@ -19,7 +20,8 @@ from app.schemas.response import (
     SectionDetail, 
     CourseResearchResponse,
     CourseGenerationSuccess,
-    ChapterCompileResponse
+    ChapterCompileResponse,
+    CourseWithLessons
 )
 from app.schemas.chat import ChatRequest, ChatResponse, StructuredChatRequest, StructuredChatResponse
 from app.schemas.scrape import ScrapeRequest, ScrapeResponse
@@ -61,20 +63,121 @@ async def get_course(course_id: str):
     """Stateless mode: course data is not persisted. Generate via POST /courses/generate."""
     raise HTTPException(status_code=404, detail="Stateless mode: courses are not stored. Use POST /courses/generate.")
 
-@router.post("/courses/generate", response_model=Course)
+def compile_single_chapter(course_id: str, course_name: str, ch: dict) -> dict:
+    """Compile one chapter through the full Research->Scrape->Organize->Write->Review pipeline."""
+    ch_id = ch.get("id")
+    ch_title = ch.get("title", f"Chapter {ch_id}")
+    logger.info(f"[Parallel] Compiling chapter {ch_id}: '{ch_title}'")
+
+    # 1. Research
+    urls = []
+    try:
+        urls = researcher_service.research(topic=course_name, concept=ch_title)
+    except Exception as e:
+        logger.warning(f"[Ch{ch_id}] Research failed: {e}")
+
+    # 2. Scrape & Organize — try each URL until one works
+    knowledge_block = f"Core information about {ch_title}."
+    if urls:
+        scraped_url = None
+        for url in urls:
+            try:
+                scrape_service.scrape(url=url)
+                scraped_url = url
+                break
+            except Exception:
+                continue
+        if scraped_url:
+            try:
+                organized = organizer_service.organize_content(urls=[scraped_url])
+                knowledge_block = "\n\n".join([
+                    f"Category: {cat['name']}\n" + "\n".join([f"{t['title']}: {t['summary']}" for t in cat.get("topics", [])])
+                    for cat in organized.get("categories", [])
+                ])
+            except Exception as e:
+                logger.warning(f"[Ch{ch_id}] Organizer failed: {e}")
+
+    # 3. Write + Review (max 2 attempts to save tokens)
+    style = "Format sections as clean Markdown with headings, explanations, and code examples."
+    lesson = None
+    result = None
+    for attempt in range(1, 3):
+        try:
+            lesson = writer_service.write_lesson(topic=ch_title, knowledge=knowledge_block, style_template=style)
+            review = reviewer_service.review_lesson(
+                topic=ch_title,
+                lesson_markdown=json.dumps(lesson),
+                review_criteria="Check for missing sections, duplicate content, and empty explanations."
+            )
+            if review.get("approved"):
+                final = review.get("refined_lesson") or lesson
+                result = {
+                    "chapter_id": ch_id, "course_id": course_id,
+                    "title": final.get("chapter", ch_title),
+                    "introduction": final.get("introduction", ""),
+                    "sections": final.get("sections", [])
+                }
+                break
+            else:
+                style = f"{style}\nFeedback: {review.get('feedback')}"
+        except Exception as e:
+            logger.error(f"[Ch{ch_id}] Write/review attempt {attempt} failed: {e}")
+
+    if not result:
+        result = {
+            "chapter_id": ch_id, "course_id": course_id,
+            "title": lesson.get("chapter", ch_title) if lesson else ch_title,
+            "introduction": lesson.get("introduction", "") if lesson else "",
+            "sections": lesson.get("sections", []) if lesson else []
+        }
+
+    logger.info(f"[Parallel] Chapter {ch_id} compiled successfully.")
+    return result
+
+@router.post("/courses/generate", response_model=CourseWithLessons)
 async def generate_course(request: CourseGenerateRequest):
     try:
         course_id = slugify(request.topic)
-        logger.info(f"Generating course roadmap for: {request.topic} (ID: {course_id})")
+        logger.info(f"Generating course + all lessons for: {request.topic}")
+
+        # Step 1: Planner
         plan = planner_service.generate_plan(topic=request.topic)
-        return Course(
+        chapters = plan.get("chapters", [])
+        course_name = plan.get("course", request.topic)
+
+        # Step 2: Compile ALL chapters in parallel (3 threads)
+        lessons = {}
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future_to_ch = {
+                executor.submit(compile_single_chapter, course_id, course_name, ch): ch
+                for ch in chapters
+            }
+            for future in as_completed(future_to_ch):
+                ch = future_to_ch[future]
+                ch_id = ch.get("id")
+                try:
+                    lesson_data = future.result()
+                    lessons[str(ch_id)] = lesson_data
+                    logger.info(f"Chapter {ch_id} ready.")
+                except Exception as e:
+                    logger.error(f"Chapter {ch_id} compilation failed: {e}")
+                    lessons[str(ch_id)] = {
+                        "chapter_id": ch_id, "course_id": course_id,
+                        "title": ch.get("title", f"Chapter {ch_id}"),
+                        "introduction": "This chapter could not be compiled.",
+                        "sections": []
+                    }
+
+        return CourseWithLessons(
             id=course_id,
-            course=plan.get("course", request.topic),
-            chapters=plan.get("chapters", [])
+            course=course_name,
+            chapters=chapters,
+            lessons=lessons
         )
     except Exception as e:
-        logger.error(f"Failed to generate course roadmap: {e}")
+        logger.error(f"Failed to generate course: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @router.post("/courses/{course_id}/research", response_model=CourseResearchResponse)
