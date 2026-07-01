@@ -36,7 +36,8 @@ class WriterAgentService:
         # Call Groq service
         raw_response = self.groq_service.generate(
             prompt=prompt,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            response_format={"type": "json_object"}
         )
         
         # Parse the JSON response
