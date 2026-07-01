@@ -66,7 +66,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
     function App() {
       const [courses, setCourses] = useState([]);
@@ -80,7 +80,8 @@
       const [loadingLesson, setLoadingLesson] = useState(false);
       const [agentStep, setAgentStep] = useState("");
       const [darkMode, setDarkMode] = useState(false);
-      const [compileProgress, setCompileProgress] = useState("");
+      const [compileProgress, setCompileProgress] = useState({ text: "", courseId: null });
+      const compileSessionRef = useRef(0);
 
       // Stateless mode: no stored courses to load on start
       useEffect(() => { setCourses([]); }, []);
@@ -96,7 +97,9 @@
         e.preventDefault();
         if (!newTopic.trim()) return;
         setLoadingRoadmap(true);
-        setCompileProgress("🧠 Planner Agent: Building course syllabus...");
+        setCompileProgress({ text: "🧠 Planner Agent: Building course syllabus...", courseId: null });
+        
+        const currentSession = ++compileSessionRef.current;
         try {
           const res = await fetch("/api/courses/generate", {
             method: "POST",
@@ -112,15 +115,25 @@
           setActiveChapter(null);
           setActiveLesson(null);
           setNewTopic("");
-          setLessonCache({}); // clear cache for new course
+          setLessonCache(prev => {
+             // Keep existing cache so previously generated courses are not cleared
+             return prev;
+          });
           
           // Phase 2: Orchestrate Background Compilation (avoids Render 100s timeout)
           setLoadingRoadmap(false); // Let the user see the syllabus immediately
           
           const total = courseObj.chapters.length;
           for (let i = 0; i < total; i++) {
+             if (currentSession !== compileSessionRef.current) {
+                console.log("Compilation session cancelled by new request.");
+                break;
+             }
              const ch = courseObj.chapters[i];
-             setCompileProgress(`⚙️ Compiling chapters in background... (${i + 1}/${total}) - ${ch.title}`);
+             setCompileProgress({
+                text: `⚙️ Compiling chapters in background... (${i + 1}/${total}) - ${ch.title}`,
+                courseId: courseObj.id
+             });
              
              try {
                const chRes = await fetch(`/api/chapters/${ch.id}/generate`, {
@@ -141,15 +154,30 @@
                console.error(`Failed compiling chapter ${ch.id}`, err);
              }
              // 12s gap between chapters → stays well under Groq's 30 RPM limit
-             if (i < total - 1) await new Promise(r => setTimeout(r, 12000));
+             if (i < total - 1) {
+                await new Promise(r => setTimeout(r, 12000));
+                if (currentSession !== compileSessionRef.current) {
+                   console.log("Compilation session cancelled by new request.");
+                   break;
+                }
+             }
           }
-          setCompileProgress("✅ All chapters compiled and ready!");
-          setTimeout(() => setCompileProgress(""), 4000);
+          
+          if (currentSession === compileSessionRef.current) {
+             setCompileProgress({ text: "✅ All chapters compiled and ready!", courseId: courseObj.id });
+             setTimeout(() => {
+               if (currentSession === compileSessionRef.current) {
+                 setCompileProgress({ text: "", courseId: null });
+               }
+             }, 4000);
+          }
           
         } catch (err) {
-          setCompileProgress("");
-          setLoadingRoadmap(false);
-          alert("Error generating course. Please check server connection.");
+          if (currentSession === compileSessionRef.current) {
+            setCompileProgress({ text: "", courseId: null });
+            setLoadingRoadmap(false);
+            alert("Error generating course. Please check server connection.");
+          }
         }
       };
 
@@ -251,16 +279,16 @@
             </div>
 
             {/* Background compile progress indicator */}
-            {compileProgress && (
+            {compileProgress.text && (compileProgress.courseId === null || compileProgress.courseId === activeCourse?.id) && (
               <div className="mx-4 mt-2 mb-1 p-3 rounded-lg bg-indigo-50 border border-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-900">
                 <div className="flex items-center space-x-2 text-xs font-medium text-indigo-700 dark:text-indigo-300">
-                  {!compileProgress.includes("✅") && (
+                  {!compileProgress.text.includes("✅") && (
                     <svg className="animate-spin h-3 w-3 text-indigo-600 flex-shrink-0" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   )}
-                  <span>{compileProgress}</span>
+                  <span>{compileProgress.text}</span>
                 </div>
               </div>
             )}
