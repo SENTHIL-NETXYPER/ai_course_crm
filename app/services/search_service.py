@@ -8,6 +8,24 @@ class SearchService:
     def __init__(self):
         pass
 
+    def _decode_ddg_url(self, href: str) -> str:
+        """
+        DuckDuckGo's HTML search wraps real URLs in a redirect like:
+          //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.geeksforgeeks.org%2F...
+        This method extracts and decodes the real destination URL.
+        """
+        from urllib.parse import urlparse, parse_qs, unquote
+        # Fix protocol-relative URLs first
+        if href.startswith("//"):
+            href = "https:" + href
+        parsed = urlparse(href)
+        # Extract the 'uddg' param which contains the real encoded URL
+        params = parse_qs(parsed.query)
+        if "uddg" in params:
+            real_url = unquote(params["uddg"][0])
+            return real_url
+        return href
+
     def _fallback_search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         logger.info(f"Using BeautifulSoup fallback search for query: '{query}'")
         headers = {
@@ -24,9 +42,14 @@ class SearchService:
                     href = a.get("href")
                     title = a.get_text(strip=True)
                     if href:
+                        # Decode DuckDuckGo redirect wrapper to get the real URL
+                        real_url = self._decode_ddg_url(href.strip())
+                        # Skip if still not a valid http/https URL
+                        if not real_url.startswith("http://") and not real_url.startswith("https://"):
+                            continue
                         output.append({
                             "title": title,
-                            "url": href.strip(),
+                            "url": real_url,
                             "snippet": ""
                         })
                     if len(output) >= max_results:
@@ -35,6 +58,7 @@ class SearchService:
         except Exception as e:
             logger.error(f"Fallback BeautifulSoup search failed: {e}")
         return []
+
 
     def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         logger.info(f"Searching DuckDuckGo for query: '{query}'")
