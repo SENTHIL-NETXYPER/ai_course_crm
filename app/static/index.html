@@ -114,14 +114,12 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ topic: newTopic, level: "beginner" })
           });
-          const result = await res.json();
-          if (result.success) {
-            // Load the full syllabus from GET /courses/{course_id}
-            const courseRes = await fetch(`/courses/${result.course_id}`);
-            const courseData = await courseRes.json();
-            setCourses(prev => [courseData, ...prev]);
-            setActiveCourse(courseData);
-          }
+          if (!res.ok) throw new Error("Course generation failed.");
+          const courseData = await res.json(); // returns Course directly
+          setCourses(prev => [courseData, ...prev]);
+          setActiveCourse(courseData);
+          setActiveChapter(null);
+          setActiveLesson(null);
           setNewTopic("");
         } catch (err) {
           alert("Error generating course. Please check server connection.");
@@ -130,44 +128,40 @@
         }
       };
 
+
       const handleSelectChapter = async (chapter) => {
         setActiveChapter(chapter);
         setActiveLesson(null);
         setLoadingLesson(true);
-        setAgentStep("⚙️ Running Agentic Compiler loop for this chapter...");
+        setAgentStep("⚙️ Compiling lesson: Research → Scrape → Write → Review...");
         
         try {
-          // Step 1: Compile the chapter lesson (runs research -> scrape -> organize -> write-review loop)
-          const compileRes = await fetch(`/chapters/${chapter.id}/generate`, {
+          // Single call — compile AND return ChapterDetail directly
+          const res = await fetch(`/chapters/${chapter.id}/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ course_id: activeCourse.id, regenerate: false })
+            body: JSON.stringify({
+              course_id: activeCourse.id,
+              chapter_title: chapter.title,
+              regenerate: false
+            })
           });
-          if (!compileRes.ok) {
-            throw new Error("Failed to compile chapter lesson.");
-          }
-          
-          setAgentStep("📖 Loading compiled chapter lesson content...");
-          // Step 2: Retrieve compiled lesson detail
-          const res = await fetch(`/chapters/${chapter.id}?course_id=${activeCourse.id}`);
-          if (!res.ok) {
-            throw new Error(`Failed to load chapter: ${res.status}`);
-          }
-          const lessonData = await res.json();
-          
+          if (!res.ok) throw new Error("Chapter compilation failed.");
+          const lessonData = await res.json(); // returns ChapterDetail directly
           setActiveLesson({
             chapter: lessonData.title,
             introduction: lessonData.introduction,
             sections: lessonData.sections
           });
         } catch (err) {
-          console.error("Failed to load compiled chapter:", err);
-          alert("Failed to load chapter lesson.");
+          console.error("Failed to compile chapter:", err);
+          alert("Failed to generate chapter lesson. Try again.");
         } finally {
           setLoadingLesson(false);
           setAgentStep("");
         }
       };
+
 
       const toggleDarkMode = () => {
         setDarkMode(!darkMode);

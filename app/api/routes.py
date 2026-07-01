@@ -52,73 +52,35 @@ def slugify(text: str) -> str:
 
 @router.get("/courses", response_model=List[Course])
 async def get_all_courses():
-    try:
-        raw_courses = db.get_all_roadmaps()
-        courses_list = []
-        for c in raw_courses:
-            courses_list.append(Course(**c["roadmap"]))
-        return courses_list
-    except Exception as e:
-        logger.error(f"Error fetching all courses: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    """Lists all previously generated courses (stateless mode: always returns empty)."""
+    return []
+
 
 @router.get("/courses/{course_id}", response_model=Course)
 async def get_course(course_id: str):
-    try:
-        cached = db.get_roadmap(course_id)
-        if not cached:
-            raise HTTPException(status_code=404, detail=f"Course with ID '{course_id}' not found.")
-        return Course(**cached)
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        logger.error(f"Error fetching course {course_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    """Stateless mode: course data is not persisted. Generate via POST /courses/generate."""
+    raise HTTPException(status_code=404, detail="Stateless mode: courses are not stored. Use POST /courses/generate.")
 
-@router.post("/courses/generate", response_model=CourseGenerationSuccess)
+@router.post("/courses/generate", response_model=Course)
 async def generate_course(request: CourseGenerateRequest):
     try:
         course_id = slugify(request.topic)
-        logger.info(f"Received request to generate course roadmap for topic: {request.topic} (ID: {course_id})")
-        
-        # Check cache
-        cached = db.get_roadmap(course_id)
-        if cached:
-            logger.info(f"Course cache HIT for ID: {course_id}")
-            return CourseGenerationSuccess(
-                success=True,
-                course_id=course_id,
-                course_name=cached.get("course", request.topic)
-            )
-            
-        logger.info(f"Course cache MISS for ID: {course_id}. Generating roadmap using Planner Agent...")
+        logger.info(f"Generating course roadmap for: {request.topic} (ID: {course_id})")
         plan = planner_service.generate_plan(topic=request.topic)
-        
-        course_data = {
-            "id": course_id,
-            "course": plan.get("course", request.topic),
-            "chapters": plan.get("chapters", [])
-        }
-        
-        db.save_roadmap(course_id, course_data)
-        
-        return CourseGenerationSuccess(
-            success=True,
-            course_id=course_id,
-            course_name=course_data["course"]
+        return Course(
+            id=course_id,
+            course=plan.get("course", request.topic),
+            chapters=plan.get("chapters", [])
         )
     except Exception as e:
         logger.error(f"Failed to generate course roadmap: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/courses/{course_id}/research", response_model=CourseResearchResponse)
 async def research_course_concept(course_id: str, request: CourseResearchRequest):
     try:
-        logger.info(f"Received research request for course ID: '{course_id}', concept: '{request.concept}'")
-        course_outline = db.get_roadmap(course_id)
-        search_topic = course_outline.get("course", course_id) if course_outline else course_id
-        
-        urls = researcher_service.research(topic=search_topic, concept=request.concept)
+        urls = researcher_service.research(topic=course_id, concept=request.concept)
         return CourseResearchResponse(course_id=course_id, concept=request.concept, urls=urls)
     except Exception as e:
         logger.error(f"Course research failed: {e}")
@@ -126,57 +88,33 @@ async def research_course_concept(course_id: str, request: CourseResearchRequest
 
 @router.get("/chapters/{chapter_id}", response_model=ChapterDetail)
 async def get_chapter(chapter_id: int, course_id: str):
-    try:
-        cached = db.get_lesson(course_id, chapter_id)
-        if not cached:
-            raise HTTPException(status_code=404, detail=f"Chapter {chapter_id} of Course '{course_id}' not found.")
-        return ChapterDetail(**cached)
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        logger.error(f"Error fetching chapter detail: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    """Stateless mode: chapters are not stored. Use POST /chapters/{id}/generate."""
+    raise HTTPException(status_code=404, detail="Stateless mode: chapters are not stored. Use POST /chapters/{id}/generate.")
 
-@router.post("/chapters/{chapter_id}/generate", response_model=ChapterCompileResponse)
+
+@router.post("/chapters/{chapter_id}/generate", response_model=ChapterDetail)
 async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileRequest):
     try:
         course_id = request.course_id
-        logger.info(f"Received request to compile chapter {chapter_id} of course '{course_id}'")
+        # chapter_title passed directly from frontend, or fall back to "Chapter N"
+        chapter_title = request.chapter_title.strip() or f"Chapter {chapter_id}"
+        logger.info(f"Compiling chapter {chapter_id} '{chapter_title}' of course '{course_id}'")
         
-        # Check cache if not force-regenerate
-        if not request.regenerate:
-            cached = db.get_lesson(course_id, chapter_id)
-            if cached:
-                logger.info(f"Chapter compile cache HIT for course '{course_id}', chapter {chapter_id}")
-                return ChapterCompileResponse(status="completed")
-                
-        logger.info(f"Chapter compile cache MISS or forced regenerate. Resolving chapter details...")
-        
-        course_outline = db.get_roadmap(course_id)
-        if not course_outline:
-            raise HTTPException(status_code=404, detail=f"Course syllabus roadmap for ID '{course_id}' not found.")
-            
-        chapter_title = f"Chapter {chapter_id}"
-        for ch in course_outline.get("chapters", []):
-            if ch.get("id") == chapter_id:
-                chapter_title = ch.get("title", chapter_title)
-                break
-                
-        # 1. Research Agent (web references lookup)
+        # 1. Research Agent
         urls = []
         try:
-            urls = researcher_service.research(topic=course_outline.get("course", course_id), concept=chapter_title)
+            urls = researcher_service.research(topic=course_id.replace("_", " "), concept=chapter_title)
         except Exception as re_err:
             logger.error(f"Research failed for chapter {chapter_id}: {re_err}")
             
-        # 2. Scrape & Organize (Knowledge builder) - try each URL until one works
+        # 2. Scrape & Organize - try each URL until one works
         knowledge_block = f"Core information about {chapter_title}."
         if urls:
             scraped_url = None
             for candidate_url in urls:
                 try:
                     logger.info(f"Scraper: Trying URL: {candidate_url}")
-                    scraped_content = scrape_service.scrape(url=candidate_url)
+                    scrape_service.scrape(url=candidate_url)
                     scraped_url = candidate_url
                     logger.info(f"Scraper: Successfully scraped {candidate_url}")
                     break
@@ -192,14 +130,14 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                         for cat in organized_data.get("categories", [])
                     ])
                 except Exception as org_err:
-                    logger.error(f"Organizer failed for chapter {chapter_id}: {org_err}")
-                
-        # 3. Writer & Reviewer (Self-Reflection Loop)
+                    logger.error(f"Organizer failed: {org_err}")
+
+        # 3. Writer & Reviewer loop
         max_attempts = 3
-        current_style = "Format sections as clean Markdown, include clear section headings, explanations, and Python code blocks."
+        current_style = "Format sections as clean Markdown, include clear section headings, explanations, and code examples."
         last_lesson = None
         chapter_detail = None
-        
+
         for attempt in range(1, max_attempts + 1):
             logger.info(f"Attempt {attempt}/{max_attempts} to write lesson...")
             try:
@@ -208,33 +146,30 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                     knowledge=knowledge_block,
                     style_template=current_style
                 )
-                lesson_str = json.dumps(last_lesson)
-                
                 review_result = reviewer_service.review_lesson(
                     topic=chapter_title,
-                    lesson_markdown=lesson_str,
+                    lesson_markdown=json.dumps(last_lesson),
                     review_criteria="Check for missing sections, duplicate content, wrong order, and empty explanation."
                 )
-                
                 if review_result.get("approved"):
-                    logger.info(f"Lesson approved by Reviewer on attempt {attempt}!")
-                    final_outline = review_result.get("refined_lesson") or last_lesson
+                    logger.info(f"Lesson approved on attempt {attempt}!")
+                    final = review_result.get("refined_lesson") or last_lesson
                     chapter_detail = {
                         "chapter_id": chapter_id,
                         "course_id": course_id,
-                        "title": final_outline.get("chapter", chapter_title),
-                        "introduction": final_outline.get("introduction", ""),
-                        "sections": final_outline.get("sections", [])
+                        "title": final.get("chapter", chapter_title),
+                        "introduction": final.get("introduction", ""),
+                        "sections": final.get("sections", [])
                     }
                     break
                 else:
-                    logger.warning(f"Reviewer rejected draft on attempt {attempt}. Feedback: {review_result.get('feedback')}")
-                    current_style = f"{current_style}\n\nReviewer feedback on last draft: {review_result.get('feedback')}"
+                    logger.warning(f"Rejected on attempt {attempt}: {review_result.get('feedback')}")
+                    current_style = f"{current_style}\n\nFeedback: {review_result.get('feedback')}"
             except Exception as loop_err:
-                logger.error(f"Error in writer/reviewer loop on attempt {attempt}: {loop_err}")
-                
+                logger.error(f"Writer/reviewer loop error on attempt {attempt}: {loop_err}")
+
         if not chapter_detail:
-            logger.warning(f"Falling back to draft format.")
+            logger.warning("Falling back to last draft.")
             chapter_detail = {
                 "chapter_id": chapter_id,
                 "course_id": course_id,
@@ -242,15 +177,13 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                 "introduction": last_lesson.get("introduction", "") if last_lesson else "",
                 "sections": last_lesson.get("sections", []) if last_lesson else []
             }
-            
-        # Save compiled lesson to SQLite database
-        db.save_lesson(course_id, chapter_id, chapter_detail)
-        logger.info(f"Successfully compiled and saved chapter {chapter_id} to database.")
-        
-        return ChapterCompileResponse(status="completed")
+
+        # Return directly — no database write
+        return ChapterDetail(**chapter_detail)
     except Exception as e:
-        logger.error(f"Failed to generate chapter lesson: {e}")
+        logger.error(f"Failed to compile chapter: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # ================= Standalone Agent Endpoints (For swagger load-testing) =================
 

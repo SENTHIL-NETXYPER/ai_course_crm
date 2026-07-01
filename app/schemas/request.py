@@ -13,4 +13,5 @@ class ChapterGenerateRequest(BaseModel):
 
 class ChapterCompileRequest(BaseModel):
     course_id: str = Field(..., description="The ID (slugified topic) of the course")
+    chapter_title: str = Field(default="", description="The title of the chapter (passed from frontend to avoid DB lookup)")
     regenerate: bool = Field(default=False, description="True to force recompiling and overwriting the cache database")
