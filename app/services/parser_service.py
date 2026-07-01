@@ -18,8 +18,8 @@ def _parse_json(raw_text: str, context: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Tier 2: markdown code block
-    match = re.search(r'^\s*```(?:json)?\s*(.*?)\s*```\s*$', cleaned, re.DOTALL)
+    # Tier 2: markdown code block (non-anchored to handle leading/trailing text)
+    match = re.search(r'```(?:json)?\s*(.*?)\s*```', cleaned, re.DOTALL)
     if match:
         try:
             return json.loads(match.group(1).strip(), strict=False)
