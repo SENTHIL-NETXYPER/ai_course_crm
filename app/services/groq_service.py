@@ -18,7 +18,7 @@ class GroqService:
             logger.info("GroqService initialized successfully with API key.")
             self.client = Groq(api_key=self.api_key)
 
-    def generate(self, prompt: str, system_prompt: str = None, model: str = "llama-3.1-8b-instant", response_format: dict = None, max_retries: int = 3) -> str:
+    def generate(self, prompt: str, system_prompt: str = None, model: str = "llama-3.3-70b-versatile", response_format: dict = None, max_retries: int = 3) -> str:
         if not self.client:
             logger.info("GroqService (MOCK MODE): Generating mock response for prompt.")
             if "course_name" in (system_prompt or "") or "structured-chat" in prompt:
