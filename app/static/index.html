@@ -247,6 +247,21 @@
               </form>
             </div>
 
+            {/* Background compile progress indicator */}
+            {compileProgress && (
+              <div className="mx-4 mt-2 mb-1 p-3 rounded-lg bg-indigo-50 border border-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-900">
+                <div className="flex items-center space-x-2 text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                  {!compileProgress.includes("✅") && (
+                    <svg className="animate-spin h-3 w-3 text-indigo-600 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  )}
+                  <span>{compileProgress}</span>
+                </div>
+              </div>
+            )}
+
             {/* Courses List */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-2">
@@ -267,7 +282,7 @@
                         : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
                     }`}
                   >
-                    <span className="truncate capitalize">{course.title}</span>
+                    <span className="truncate capitalize">{course.course}</span>
                     <span className="text-xs px-2 py-0.5 bg-slate-200 dark:bg-slate-800 rounded-full text-slate-500 font-mono">
                       {course.chapters.length} Ch
                     </span>
@@ -284,7 +299,7 @@
                 Course Syllabus
               </span>
               <h2 className="text-xl font-bold capitalize text-slate-800 dark:text-slate-100 truncate">
-                {activeCourse ? activeCourse.title : "Select a Course"}
+                {activeCourse ? activeCourse.course : "Select a Course"}
               </h2>
             </div>
             
@@ -364,9 +379,6 @@
                       <span>Writer & Reviewer: Writing sections & refactoring...</span>
                     </div>
                   </div>
-                </div>
-              </div>
-                 </div>
                 </div>
               </div>
             ) : activeLesson ? (
