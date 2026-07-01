@@ -115,13 +115,16 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
         
         # 1. Research Agent
         urls = []
+        snippets_block = ""
         try:
-            urls = researcher_service.research(topic=course_id.replace("_", " "), concept=chapter_title)
+            research_res = researcher_service.research(topic=course_id.replace("_", " "), concept=chapter_title)
+            urls = research_res.get("urls", [])
+            snippets_block = research_res.get("snippets_block", "")
         except Exception as re_err:
             logger.error(f"Research failed for chapter {chapter_id}: {re_err}")
             
         # 2. Scrape & Organize - try each URL until one works
-        knowledge_block = f"Core information about {chapter_title}."
+        knowledge_block = snippets_block if snippets_block else f"Core information about {chapter_title}."
         if urls:
             scraped_url = None
             for candidate_url in urls:

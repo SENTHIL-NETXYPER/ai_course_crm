@@ -6,7 +6,7 @@ class ResearcherAgentService:
     def __init__(self):
         self.search_service = SearchService()
 
-    def research(self, topic: str, concept: str) -> List[str]:
+    def research(self, topic: str, concept: str) -> dict:
         # Formulate query: e.g. "Python Variables"
         query = f"{topic} {concept}"
         logger.info(f"ResearcherAgent: Researching query '{query}'")
@@ -16,5 +16,18 @@ class ResearcherAgentService:
         
         # Extract URLs
         urls = [r["url"] for r in results if r.get("url")]
-        logger.info(f"ResearcherAgent: Researched and retrieved {len(urls)} URLs.")
-        return urls
+        
+        # Format snippets block
+        snippets = []
+        for r in results:
+            title = r.get("title", "")
+            snippet = r.get("snippet", "")
+            if title or snippet:
+                snippets.append(f"- {title}: {snippet}")
+        snippets_block = "\n".join(snippets)
+        
+        logger.info(f"ResearcherAgent: Researched and retrieved {len(urls)} URLs and compiled snippets.")
+        return {
+            "urls": urls,
+            "snippets_block": snippets_block
+        }
