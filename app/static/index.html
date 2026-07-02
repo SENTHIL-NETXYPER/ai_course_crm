@@ -114,11 +114,35 @@
         setTutorMessages(newHistory);
         setTutorLoading(true);
         try {
-          const contextText = activeLesson ? 
-            `Course: ${activeCourse?.course || ""}\nChapter: ${activeLesson.chapter}\nIntro: ${activeLesson.introduction}\n\n` + 
-            (activeLesson.sections || []).map(s => `### ${s.title}\n${s.content}`).join("\n\n") 
-            : "No specific lesson loaded yet.";
+          let fullCourseMemory = `=================================================\nCOURSE SYLLABUS & FULL MEMORY: ${activeCourse?.course || "Course"}\n=================================================\n\n`;
+          if (activeCourse?.chapters) {
+            fullCourseMemory += `--- SYLLABUS OUTLINE ---\n`;
+            activeCourse.chapters.forEach((ch, idx) => {
+              fullCourseMemory += `Chapter ${idx + 1} (ID: ${ch.id}): ${ch.title}\n`;
+            });
+            fullCourseMemory += `------------------------\n\n`;
             
+            fullCourseMemory += `--- COMPILED CHAPTER LESSONS MEMORY ---\n`;
+            activeCourse.chapters.forEach((ch, idx) => {
+              const cachedLesson = lessonCache[String(ch.id)];
+              if (cachedLesson) {
+                fullCourseMemory += `[CHAPTER ${idx + 1}: ${ch.title}]\n`;
+                fullCourseMemory += `Introduction: ${cachedLesson.introduction || ""}\n`;
+                if (cachedLesson.sections) {
+                  cachedLesson.sections.forEach(sec => {
+                    fullCourseMemory += `  Section ${sec.order}: ${sec.title}\n  Content: ${sec.content}\n\n`;
+                  });
+                }
+                fullCourseMemory += `----------------------------------------\n\n`;
+              } else {
+                fullCourseMemory += `[CHAPTER ${idx + 1}: ${ch.title}] -> (Pending compilation)\n\n`;
+              }
+            });
+          }
+          if (activeLesson) {
+            fullCourseMemory += `\n[CURRENTLY VIEWING ACTIVE LESSON]: Chapter ${activeLesson.chapter}\n`;
+          }
+
           const res = await fetch("/api/tutor/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -126,7 +150,7 @@
               message: userMsg,
               course_name: activeCourse?.course || "General Course",
               chapter_title: activeLesson?.chapter || "General Topic",
-              context_memory: contextText,
+              context_memory: fullCourseMemory,
               history: newHistory.map(m => ({ role: m.role, content: m.content })),
               api_key: ""
             })
@@ -379,7 +403,14 @@
       // Helper function to format markdown strings cleanly using marked.js with custom renderer
       const renderContent = (content) => {
         if (!content) return "";
-        const contentStr = typeof content === 'object' && content !== null ? JSON.stringify(content) : String(content);
+        let contentStr = typeof content === 'object' && content !== null ? JSON.stringify(content) : String(content);
+        
+        // Normalize backticks so single line code blocks like ```python # code ``` become proper multiline fenced code blocks
+        contentStr = contentStr
+          .replace(/([^\n])(\s*```[a-zA-Z0-9_-]*)/g, '$1\n\n$2')
+          .replace(/(```[a-zA-Z0-9_-]*)\s+([^\n]+)/g, '$1\n$2')
+          .replace(/([^\n])\s*(```)/g, '$1\n\n$2');
+
         if (window.marked) {
           try {
             const renderer = new window.marked.Renderer();
@@ -425,6 +456,15 @@
             renderer.paragraph = (text) => {
               const str = typeof text === 'object' && text !== null ? (text.text || text.raw || "") : String(text || "");
               return `<p class="my-3 leading-relaxed font-body text-slate-700 dark:text-slate-300 text-base lg:text-lg">${str}</p>`;
+            };
+            renderer.blockquote = (text) => {
+              const str = typeof text === 'object' && text !== null ? (text.text || text.raw || "") : String(text || "");
+              return `<blockquote class="border-l-4 border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 p-4 px-6 rounded-r-2xl my-5 text-indigo-950 dark:text-indigo-200 italic font-body shadow-sm">${str}</blockquote>`;
+            };
+            renderer.table = (header, body) => {
+              const headStr = typeof header === 'object' && header !== null ? (header.header || header.text || "") : String(header || "");
+              const bodyStr = typeof body === 'object' && body !== null ? (body.body || body.text || "") : String(body || "");
+              return `<div class="my-6 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm"><table class="w-full text-left border-collapse"><thead class="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">${headStr}</thead><tbody class="divide-y divide-slate-100 dark:divide-slate-800">${bodyStr}</tbody></table></div>`;
             };
             
             window.marked.use({ renderer });
@@ -792,11 +832,18 @@
               <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950/50">
                 {tutorMessages.map((msg, i) => (
                   <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[85%] rounded-2xl p-4 shadow-sm text-sm ${
+                    <div className={`max-w-[88%] rounded-2xl p-4 shadow-md text-sm ${
                       msg.role === "user" 
-                        ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-br-none font-body" 
-                        : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-none font-body leading-relaxed"
+                        ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-br-none font-body shadow-indigo-500/10" 
+                        : "bg-white dark:bg-slate-800/95 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-bl-none font-body leading-relaxed shadow-slate-200/50 dark:shadow-none"
                     }`}>
+                      {msg.role === "assistant" && (
+                        <div className="flex items-center space-x-1.5 mb-2 pb-1.5 border-b border-slate-100 dark:border-slate-700/60 text-[11px] font-mono font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                          <span>🤖 Course AI Tutor</span>
+                          <span>•</span>
+                          <span className="text-emerald-500 font-semibold">Memory Active</span>
+                        </div>
+                      )}
                       {msg.role === "user" ? (
                         <div>{msg.content}</div>
                       ) : (
@@ -807,22 +854,45 @@
                 ))}
                 {tutorLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-bl-none p-3 px-4 shadow-sm flex items-center space-x-2 text-xs text-slate-500 font-mono">
+                    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-bl-none p-3.5 px-5 shadow-sm flex items-center space-x-3 text-xs text-slate-500 font-mono">
                       <svg className="animate-spin h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      <span>AI Tutor is analyzing lesson context memory...</span>
+                      <span>AI Tutor is analyzing full syllabus & chapter memory...</span>
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Quick Action Prompt Chips */}
+              <div className="px-4 py-2 bg-slate-100 dark:bg-slate-900/80 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center space-x-1.5 overflow-x-auto text-xs">
+                <span className="text-slate-400 font-mono text-[10px] uppercase font-bold mr-1">Suggest:</span>
+                <button 
+                  onClick={() => setTutorInput("Summarize this chapter")}
+                  className="bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 font-medium whitespace-nowrap transition-colors"
+                >
+                  💡 Summarize Chapter
+                </button>
+                <button 
+                  onClick={() => setTutorInput("Explain Chapter 5")}
+                  className="bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 font-medium whitespace-nowrap transition-colors"
+                >
+                  ❓ What is Chapter 5?
+                </button>
+                <button 
+                  onClick={() => setTutorInput("Give me a code example")}
+                  className="bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 font-medium whitespace-nowrap transition-colors"
+                >
+                  💻 Code Example
+                </button>
               </div>
 
               {/* Chat Input */}
               <form onSubmit={handleSendTutor} className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex space-x-2">
                 <input
                   type="text"
-                  placeholder="Ask a question about this chapter..."
+                  placeholder="Ask any question about this course or chapter..."
                   value={tutorInput}
                   onChange={(e) => setTutorInput(e.target.value)}
                   disabled={tutorLoading}
@@ -831,7 +901,7 @@
                 <button
                   type="submit"
                   disabled={tutorLoading || !tutorInput.trim()}
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-md shadow-indigo-100 dark:shadow-none flex items-center justify-center"
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-md shadow-indigo-100 dark:shadow-none flex items-center justify-center"
                 >
                   Send
                 </button>
