@@ -151,7 +151,7 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
         # 3. Writer (+ optional Reviewer loop)
         # quick_mode=True skips reviewer but still allows up to 3 writer retries in case of empty sections
         max_attempts = 3 if request.quick_mode else 3
-        current_style = "Format sections as clean Markdown, include clear section headings, explanations, and code examples."
+        current_style = f"Format sections as clean Markdown. You MUST write all code examples strictly in {course_id}. Include clear section headings, deep technical explanations, and realistic, well-commented code blocks."
         last_lesson = None
         chapter_detail = None
 
@@ -161,13 +161,14 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                 last_lesson = writer_service.write_lesson(
                     topic=chapter_title,
                     knowledge=knowledge_block,
-                    style_template=current_style
+                    style_template=current_style,
+                    course_name=course_id
                 )
 
                 # Sanity-check: if sections is empty, treat as a failure and retry
                 if not last_lesson.get("sections"):
                     logger.warning(f"Writer returned empty sections on attempt {attempt}. Retrying with self-sufficient prompt...")
-                    knowledge_block = f"Write a comprehensive educational lesson on '{chapter_title}' covering: definition and overview, key concepts, syntax and usage, practical examples with code, common best practices, and a summary. Do not rely on external sources."
+                    knowledge_block = f"Write a comprehensive, authoritative educational lesson on '{chapter_title}' for the course '{course_id}' covering: architectural overview, in-depth syntax and language rules in {course_id}, realistic code examples with line-by-line explanation, common gotchas and best practices, and a summary. Do not rely on external sources."
                     raise ValueError("Writer returned empty sections — retrying")
 
                 if request.quick_mode:
@@ -259,7 +260,7 @@ async def standalone_organizer(request: OrganizeRequest):
 @router.post("/write-lesson")
 async def standalone_writer(request: ChapterGenerateRequest):
     try:
-        lesson = writer_service.write_lesson(topic=request.course_id, knowledge=request.knowledge)
+        lesson = writer_service.write_lesson(topic=request.course_id, knowledge=request.knowledge, course_name=request.course_id)
         return lesson
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

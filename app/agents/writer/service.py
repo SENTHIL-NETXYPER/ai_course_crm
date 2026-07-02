@@ -19,21 +19,22 @@ class WriterAgentService:
         with open(prompt_path, "r", encoding="utf-8") as f:
             self.prompt_template = f.read()
 
-    def write_lesson(self, topic: str, knowledge: str, style_template: str = None) -> dict:
-        logger.info(f"WriterAgent: Writing structured lesson for topic '{topic}'")
+    def write_lesson(self, topic: str, knowledge: str, style_template: str = None, course_name: str = "") -> dict:
+        logger.info(f"WriterAgent: Writing structured lesson for topic '{topic}' (course: '{course_name}')")
 
         # Set default style template if empty
         if not style_template:
-            style_template = "Format sections as clean Markdown, include clear section headings, explanations, and code examples."
+            style_template = f"Format sections as clean Markdown, include clear section headings, in-depth technical explanations, and rich, well-commented code examples strictly in {course_name if course_name else 'the target language'}."
 
         # Format the user prompt
         prompt = self.prompt_template.format(
             topic=topic,
             knowledge=knowledge,
-            style_template=style_template
+            style_template=style_template,
+            course_name=course_name if course_name else topic
         )
 
-        system_prompt = "You are an expert technical content writer. You synthesize knowledge into a structured JSON lesson outline."
+        system_prompt = f"You are an expert technical content writer and curriculum developer for {course_name if course_name else 'technical software courses'}. You synthesize knowledge into a rich, structured JSON lesson outline."
 
         # Call Groq service
         raw_response = self.groq_service.generate(

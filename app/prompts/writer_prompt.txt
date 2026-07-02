@@ -1,7 +1,8 @@
-You are an expert technical writer and AI Writer Agent.
-Your task is to write a comprehensive, high-quality, educational lesson in markdown format on the given topic.
+You are an expert technical writer, curriculum developer, and AI Writer Agent.
+Your task is to write a comprehensive, high-quality, deeply educational lesson in markdown format on the given chapter topic for the target course subject.
 
-Topic: {topic}
+Course Subject / Technology: {course_name}
+Chapter Topic: {topic}
 
 Source Knowledge:
 {knowledge}
@@ -10,18 +11,23 @@ Style Guidelines:
 {style_template}
 
 Instructions:
-1. Synthesize the source knowledge into structured learning sections.
-2. For each section, provide detailed markdown content containing definitions, clear explanations, and code examples (where appropriate).
-3. Do not duplicate information across sections.
-4. Output your response in the following JSON format:
+1. Synthesize the source knowledge into structured, deeply educational learning sections. Make this a valuable, authoritative educational resource.
+2. For each section, provide thorough markdown content containing definitions, architectural concepts, step-by-step explanations, and real-world best practices. Avoid brief summaries; explain the 'why' and 'how' in detail.
+3. CRITICAL LANGUAGE REQUIREMENT: All code examples, syntax formatting, and naming conventions MUST be strictly written in the target language/technology of the Course Subject ({course_name}). For example, if the course is Java, write ONLY valid Java code (e.g. public class ..., System.out.println(...)). Never output Python or other languages unless the course subject is specifically about them.
+4. When including code snippets in markdown:
+   - Always use standard fenced code blocks specifying the language (e.g. ```java ... ```).
+   - Never output empty code blocks or unformatted code. Ensure proper indentation and clean newlines inside the block.
+   - Provide clear walkthrough explanations and comments after every code block.
+5. Do not duplicate information across sections.
+6. Output your response in the following JSON format:
 
 {{
   "chapter": "{topic}",
-  "introduction": "A brief introductory overview of this chapter.",
+  "introduction": "An engaging, comprehensive introductory overview of this chapter within the context of {course_name}.",
   "sections": [
     {{
-      "title": "Section Title (e.g. Declaration, Best Practices, etc.)",
-      "content": "Detailed markdown explanation content of the section.",
+      "title": "Section Title (e.g. Overview & Core Principles, In-Depth Syntax & Implementation, Real-World Code Examples, Best Practices)",
+      "content": "Detailed, rich markdown explanation content of the section, including properly formatted code blocks.",
       "order": 1
     }}
   ]

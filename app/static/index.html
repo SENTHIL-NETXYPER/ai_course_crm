@@ -207,20 +207,34 @@
         document.documentElement.classList.toggle('dark');
       };
 
-      // Helper function to format markdown strings cleanly (simple rendering for UI demo)
+      // Helper function to format markdown strings cleanly and richly
       const renderContent = (content) => {
         if (!content) return "";
-        // Replace python code blocks
         let html = content
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;");
           
-        html = html.replace(/```python([\s\S]*?)```/g, '<pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-sm my-4 overflow-x-auto border border-slate-800">$1</pre>');
+        // 1. Remove empty or whitespace-only code blocks that cause empty black lines
+        html = html.replace(/```(?:[a-zA-Z0-9_-]+)?\s*```/g, '');
+        
+        // 2. Match fenced code blocks of ANY language (java, python, js, sql, cpp, etc. or none)
+        html = html.replace(/```(?:[a-zA-Z0-9_-]+)?\s*\n?([\s\S]*?)```/g, '<pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-sm my-4 overflow-x-auto border border-slate-800 shadow-md"><code>$1</code></pre>');
+        
+        // 3. Inline code blocks
         html = html.replace(/`([^`]+)`/g, '<code class="bg-slate-100 dark:bg-slate-800 text-pink-600 dark:text-pink-400 px-1.5 py-0.5 rounded font-mono text-sm">$1</code>');
+        
+        // 4. Markdown headings
+        html = html.replace(/###\s*(.*)/g, '<h4 class="text-lg font-bold text-indigo-700 dark:text-indigo-400 mt-5 mb-2">$1</h4>');
+        html = html.replace(/##\s*(.*)/g, '<h3 class="text-xl font-bold text-slate-800 dark:text-slate-200 mt-6 mb-3">$1</h3>');
+        
+        // 5. Bold formatting and bullet lists for richer presentation
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-slate-900 dark:text-white">$1</strong>');
+        html = html.replace(/^\s*(?:-|\*)\s+(.*)/gm, '<li class="ml-4 list-disc my-1">$1</li>');
+        
+        // 6. Paragraph line breaks
         html = html.replace(/\n\n/g, '<p class="my-3 leading-relaxed font-body"></p>');
-        html = html.replace(/###\s*(.*)/g, '<h4 class="text-lg font-bold text-slate-800 dark:text-slate-200 mt-4 mb-2">$1</h4>');
-        return <div dangerouslySetInnerHTML={{ __html: html }} />;
+        return <div className="space-y-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
       };
 
       return (
