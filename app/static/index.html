@@ -379,12 +379,15 @@
       // Helper function to format markdown strings cleanly using marked.js with custom renderer
       const renderContent = (content) => {
         if (!content) return "";
+        const contentStr = typeof content === 'object' && content !== null ? JSON.stringify(content) : String(content);
         if (window.marked) {
           try {
             const renderer = new window.marked.Renderer();
             renderer.code = (code, language) => {
-              const lang = (language || "code").toLowerCase();
-              const encodedCode = encodeURIComponent((code || "").trim());
+              const codeStr = typeof code === 'object' && code !== null ? (code.text || code.code || "") : String(code || "");
+              const langStr = typeof language === 'object' && language !== null ? (language.lang || "code") : (typeof code === 'object' ? (code.lang || "code") : (language || "code"));
+              const lang = (langStr || "code").toLowerCase();
+              const encodedCode = encodeURIComponent(codeStr.trim());
               return `<div class="my-6 rounded-2xl overflow-hidden border border-slate-700/80 shadow-2xl bg-slate-900 animate-fadeIn">
                 <div class="bg-slate-800/95 px-4 py-3 flex items-center justify-between border-b border-slate-700/60 text-xs text-slate-300 font-mono">
                   <span class="flex items-center space-x-2 font-bold">
@@ -400,34 +403,41 @@
                     </button>
                   </div>
                 </div>
-                <pre class="p-6 text-slate-100 font-mono text-sm overflow-x-auto leading-relaxed bg-slate-900/90"><code>${(code || "").trim()}</code></pre>
+                <pre class="p-6 text-slate-100 font-mono text-sm overflow-x-auto leading-relaxed bg-slate-900/90"><code>${codeStr.trim()}</code></pre>
               </div>`;
             };
             renderer.heading = (text, level) => {
-              // Clean up any stray markdown symbols like ** that might remain inside headings
-              const cleanText = text.replace(/\*\*/g, "").replace(/##+/g, "").trim();
-              if (level === 1) return `<h1 class="text-3xl lg:text-4xl font-extrabold text-slate-900 dark:text-white mt-8 mb-4 tracking-tight font-sans">${cleanText}</h1>`;
-              if (level === 2) return `<h2 class="text-2xl lg:text-3xl font-bold text-slate-800 dark:text-slate-100 mt-8 mb-4 tracking-tight font-sans border-b border-slate-200 dark:border-slate-800 pb-2">${cleanText}</h2>`;
-              if (level === 3) return `<h3 class="text-xl lg:text-2xl font-bold text-indigo-700 dark:text-indigo-400 mt-6 mb-3 font-sans">${cleanText}</h3>`;
+              const str = typeof text === 'object' && text !== null ? (text.text || text.raw || "") : String(text || "");
+              const depth = typeof level === 'object' && level !== null ? (level.depth || level.level || 2) : (typeof text === 'object' ? (text.depth || 2) : (level || 2));
+              const cleanText = str.replace(/\*\*/g, "").replace(/##+/g, "").trim();
+              if (depth === 1) return `<h1 class="text-3xl lg:text-4xl font-extrabold text-slate-900 dark:text-white mt-8 mb-4 tracking-tight font-sans">${cleanText}</h1>`;
+              if (depth === 2) return `<h2 class="text-2xl lg:text-3xl font-bold text-slate-800 dark:text-slate-100 mt-8 mb-4 tracking-tight font-sans border-b border-slate-200 dark:border-slate-800 pb-2">${cleanText}</h2>`;
+              if (depth === 3) return `<h3 class="text-xl lg:text-2xl font-bold text-indigo-700 dark:text-indigo-400 mt-6 mb-3 font-sans">${cleanText}</h3>`;
               return `<h4 class="text-lg font-bold text-slate-700 dark:text-slate-300 mt-5 mb-2 font-sans">${cleanText}</h4>`;
             };
             renderer.list = (body, ordered) => {
-              const type = ordered ? "ol" : "ul";
-              const className = ordered ? "list-decimal ml-6 my-3 space-y-1 text-slate-700 dark:text-slate-300" : "list-disc ml-6 my-3 space-y-1 text-slate-700 dark:text-slate-300";
-              return `<${type} class="${className}">${body}</${type}>`;
+              const bodyStr = typeof body === 'object' && body !== null ? (body.body || body.text || "") : String(body || "");
+              const isOrdered = typeof ordered === 'object' && ordered !== null ? (ordered.ordered || false) : (typeof body === 'object' ? (body.ordered || false) : (ordered || false));
+              const type = isOrdered ? "ol" : "ul";
+              const className = isOrdered ? "list-decimal ml-6 my-3 space-y-1 text-slate-700 dark:text-slate-300" : "list-disc ml-6 my-3 space-y-1 text-slate-700 dark:text-slate-300";
+              return `<${type} class="${className}">${bodyStr}</${type}>`;
             };
-            renderer.paragraph = (text) => `<p class="my-3 leading-relaxed font-body text-slate-700 dark:text-slate-300 text-base lg:text-lg">${text}</p>`;
+            renderer.paragraph = (text) => {
+              const str = typeof text === 'object' && text !== null ? (text.text || text.raw || "") : String(text || "");
+              return `<p class="my-3 leading-relaxed font-body text-slate-700 dark:text-slate-300 text-base lg:text-lg">${str}</p>`;
+            };
             
             window.marked.use({ renderer });
-            const html = window.marked.parse(content);
-            return <div className="space-y-4 leading-relaxed font-body" dangerouslySetInnerHTML={{ __html: html }} />;
+            const html = window.marked.parse(contentStr, { async: false });
+            const finalHtml = typeof html === 'string' ? html : String(html || "");
+            return <div className="space-y-4 leading-relaxed font-body" dangerouslySetInnerHTML={{ __html: finalHtml }} />;
           } catch (e) {
             console.error("Marked parsing error:", e);
           }
         }
         
         // Safe fallback formatting if marked is unavailable
-        let html = content
+        let html = contentStr
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
