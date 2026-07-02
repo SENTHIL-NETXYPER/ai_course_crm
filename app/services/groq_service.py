@@ -280,11 +280,25 @@ class GroqService:
             except Exception as e:
                 logger.error(f"Error in AI Tutor chat with Groq API (70b): {e}")
                 try:
+                    # llama-3.1-8b-instant has a very small TPM limit (6000).
+                    # Rebuild messages with a much shorter context to stay under the limit.
+                    short_system = (
+                        f"You are the Course AI Tutor for '{course_name}', chapter '{chapter_title}'.\n"
+                        f"Course summary (brief):\n{context_memory[:3000]}\n"
+                        f"Answer the student's question clearly using Markdown."
+                    )
+                    short_messages = [{"role": "system", "content": short_system}]
+                    # Keep only the last 3 history turns to save tokens
+                    if history:
+                        for turn in history[-3:]:
+                            if isinstance(turn, dict) and "role" in turn and "content" in turn:
+                                short_messages.append({"role": turn["role"], "content": turn["content"]})
+                    short_messages.append({"role": "user", "content": message})
                     chat_completion = client_to_use.chat.completions.create(
-                        messages=messages,
+                        messages=short_messages,
                         model="llama-3.1-8b-instant",
                         temperature=0.7,
-                        max_tokens=1000
+                        max_tokens=800
                     )
                     reply = chat_completion.choices[0].message.content
                 except Exception as e2:
