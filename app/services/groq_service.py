@@ -174,11 +174,10 @@ class GroqService:
         # Ordered fallback chain of models available on Groq to avoid rate/token limits
         fallback_chain = [
             model,
-            "llama-3.1-8b-instant",
             "llama-3.3-70b-versatile",
-            "llama3-70b-8192",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it"
+            "llama-3.1-8b-instant",
+            "llama-3.2-3b-preview",
+            "llama-3.2-1b-preview"
         ]
         fallback_chain = list(dict.fromkeys(fallback_chain))
         current_idx = 0
@@ -205,6 +204,8 @@ class GroqService:
                     elif "response_format" in kwargs:
                         logger.warning("All models failed JSON validation. Retrying WITHOUT JSON mode...")
                         del kwargs["response_format"]
+                        current_idx = 0
+                        active_model = fallback_chain[0]
                         if attempt < max_retries:
                             continue
                 # Handle rate limit (429), token limits, or model errors with automatic model switching
