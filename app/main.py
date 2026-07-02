@@ -1,5 +1,6 @@
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.api.routes import router as api_router
 from app.schemas.chat import ChatRequest, ChatResponse, StructuredChatRequest, StructuredChatResponse
 from app.services.groq_service import GroqService
@@ -18,6 +19,10 @@ app = FastAPI(
 # Register the routes with the api prefix and as root paths
 app.include_router(api_router, prefix="/api")
 app.include_router(api_router)
+
+# Mount static files (serves app/static/* at /static/*)
+_static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 groq_service = GroqService()
 
