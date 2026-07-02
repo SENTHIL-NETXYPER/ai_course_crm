@@ -35,33 +35,58 @@
   <style>
     body {
       font-family: 'Plus Jakarta Sans', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
     h1, h2, h3, h4, h5, h6 {
       font-family: 'Outfit', sans-serif;
+      letter-spacing: -0.02em;
     }
     /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.25); border-radius: 8px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.5); }
+    /* Glass */
+    .glass { background: rgba(255,255,255,0.8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+    .dark .glass { background: rgba(15,23,42,0.85); }
+    /* Tutor Drawer Slide-In */
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to   { transform: translateX(0);   opacity: 1; }
     }
-    ::-webkit-scrollbar-track {
-      background: transparent;
+    .tutor-drawer { animation: slideInRight 0.28s cubic-bezier(0.22,1,0.36,1) both; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
-    ::-webkit-scrollbar-thumb {
-      background: rgba(156, 163, 175, 0.3);
-      border-radius: 4px;
+    .msg-enter { animation: fadeUp 0.22s ease both; }
+    /* Prose styles inside chat bubbles */
+    .tutor-prose h1,.tutor-prose h2,.tutor-prose h3,.tutor-prose h4 { font-family:'Outfit',sans-serif; font-weight:700; margin:0.75rem 0 0.4rem; line-height:1.3; color:inherit; }
+    .tutor-prose h1 { font-size:1.2rem; }
+    .tutor-prose h2 { font-size:1.05rem; }
+    .tutor-prose h3 { font-size:0.95rem; }
+    .tutor-prose p  { margin:0.5rem 0; line-height:1.7; }
+    .tutor-prose ul,.tutor-prose ol { margin:0.5rem 0 0.5rem 1.2rem; }
+    .tutor-prose li { margin:0.25rem 0; }
+    .tutor-prose code { background:rgba(99,102,241,0.12); color:#6366f1; padding:1px 5px; border-radius:5px; font-family:'Fira Code',monospace; font-size:0.8em; }
+    .tutor-prose pre { background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:12px; overflow-x:auto; margin:0.75rem 0; font-size:0.8em; font-family:'Fira Code',monospace; }
+    .tutor-prose strong { font-weight:700; }
+    .tutor-prose em { font-style:italic; color:inherit; opacity:0.85; }
+    .tutor-prose blockquote { border-left:3px solid #6366f1; padding-left:0.85rem; margin:0.75rem 0; opacity:0.8; font-style:italic; }
+    /* Floating button pulse ring */
+    @keyframes pulseRing {
+      0%   { box-shadow: 0 0 0 0 rgba(99,102,241,0.55); }
+      70%  { box-shadow: 0 0 0 14px rgba(99,102,241,0); }
+      100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); }
     }
-    ::-webkit-scrollbar-thumb:hover {
-      background: rgba(156, 163, 175, 0.5);
-    }
-    .glass {
-      background: rgba(255, 255, 255, 0.7);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
-    .dark .glass {
-      background: rgba(17, 24, 39, 0.7);
-    }
+    .tutor-fab { animation: pulseRing 2.2s ease infinite; }
+    /* Prompt chips */
+    .chip { transition: all 0.15s ease; }
+    .chip:hover { transform: translateY(-1px); }
+    /* Section card hover */
+    .section-card { transition: box-shadow 0.2s ease, transform 0.2s ease; }
+    .section-card:hover { transform: translateY(-2px); }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
@@ -101,7 +126,7 @@
       const [tutorInput, setTutorInput] = useState("");
       const [tutorLoading, setTutorLoading] = useState(false);
       const [tutorMessages, setTutorMessages] = useState([
-        { role: "assistant", content: "👋 **Hello!** I am your **In-Built Course AI Tutor** with *generated context memory*.\n\nI have read and memorized the content of this chapter. Ask me any question, request code examples, or ask for clarifications!" }
+        { role: "assistant", isWelcome: true, content: "Hi there! I'm your <strong>Course AI Tutor</strong> — I've memorized this entire course syllabus and every compiled chapter. Ask me anything: <em>explain a concept, quiz me, give a code example, or summarize any chapter.</em>" }
       ]);
       const compileSessionRef = useRef(0);
 
@@ -705,19 +730,21 @@
                 </div>
 
                 {/* Section Content cards */}
-                <div className="space-y-8">
-                  {activeLesson.sections.map(section => (
-                    <article 
-                      key={section.order} 
-                      className="bg-white dark:bg-slate-900 rounded-2xl p-6 lg:p-8 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow"
+                <div className="space-y-6">
+                  {activeLesson.sections.map((section, sIdx) => (
+                    <article
+                      key={section.order}
+                      className="section-card bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-xl overflow-hidden"
                     >
-                      <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center space-x-3">
-                        <span className="h-6 w-6 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-mono font-bold">
+                      {/* Card Header */}
+                      <div className="flex items-center space-x-4 px-7 pt-6 pb-0">
+                        <div className="flex-shrink-0 h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center text-xs font-bold font-mono shadow-md shadow-indigo-200 dark:shadow-indigo-900">
                           {section.order}
-                        </span>
-                        <span>{section.title}</span>
-                      </h3>
-                      <div className="text-slate-600 dark:text-slate-300">
+                        </div>
+                        <h3 className="text-lg lg:text-xl font-bold text-slate-800 dark:text-slate-100 font-sans tracking-tight">{section.title}</h3>
+                      </div>
+                      {/* Card Body */}
+                      <div className="px-7 pt-4 pb-7 text-slate-600 dark:text-slate-300">
                         {renderContent(section.content)}
                       </div>
                     </article>
@@ -791,121 +818,138 @@
             </div>
           )}
 
-          {/* FLOATING AI COURSE TUTOR BUTTON */}
+          {/* ── FLOATING AI TUTOR BUTTON ── */}
           <button
+            id="tutor-fab"
             onClick={() => setTutorOpen(!tutorOpen)}
-            className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-bold px-5 py-3.5 rounded-full shadow-2xl shadow-indigo-500/40 flex items-center space-x-3 transition-all transform hover:scale-105 active:scale-95 border border-white/20"
-            title="Ask In-Built AI Course Tutor"
+            className="tutor-fab fixed bottom-7 right-7 z-40 bg-gradient-to-br from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 active:scale-95 text-white font-semibold pl-4 pr-5 py-3 rounded-full shadow-2xl shadow-indigo-500/30 flex items-center space-x-2.5 transition-transform duration-150"
+            title="Open AI Course Tutor"
           >
-            <span className="text-xl">🤖</span>
-            <span className="font-sans text-sm tracking-wide">AI Course Tutor</span>
-            <span className="flex h-2.5 w-2.5 relative">
+            <div className="h-7 w-7 rounded-full bg-white/15 flex items-center justify-center text-base">🧑‍🏫</div>
+            <span className="font-sans text-sm tracking-tight font-bold">AI Tutor</span>
+            <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
             </span>
           </button>
 
-          {/* IN-BUILT AI COURSE TUTOR DRAWER */}
+          {/* ── AI COURSE TUTOR PREMIUM DRAWER ── */}
           {tutorOpen && (
-            <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col animate-fadeIn">
-              {/* Drawer Header */}
-              <div className="p-4 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex items-center justify-between shadow-md">
-                <div className="flex items-center space-x-3">
-                  <span className="text-2xl">🤖</span>
-                  <div>
-                    <h3 className="font-bold text-base font-sans tracking-tight">In-Built AI Course Tutor</h3>
-                    <p className="text-xs text-indigo-100 font-mono flex items-center space-x-1.5 mt-0.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                      <span className="truncate max-w-[200px]">Memory: {activeLesson?.chapter || "Active Course"}</span>
-                    </p>
+            <div className="tutor-drawer fixed inset-y-0 right-0 z-50 w-[420px] max-w-full flex flex-col bg-white dark:bg-slate-900 border-l border-slate-100 dark:border-slate-800 shadow-2xl">
+
+              {/* ─ Header ─ */}
+              <div className="flex-shrink-0 px-5 py-4 bg-gradient-to-r from-indigo-600 to-violet-700 flex items-center justify-between">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <div className="h-9 w-9 rounded-xl bg-white/20 flex items-center justify-center text-xl shadow-inner flex-shrink-0">🧑‍🏫</div>
+                  <div className="min-w-0">
+                    <h2 className="text-white font-sans font-bold text-sm tracking-tight leading-tight">Course AI Tutor</h2>
+                    <div className="flex items-center space-x-1.5 mt-0.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
+                      <p className="text-indigo-100 text-[11px] font-body truncate">
+                        {activeCourse ? `📚 ${activeCourse.course} — Full Memory Loaded` : "Select a course to activate memory"}
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => setTutorOpen(false)}
-                  className="text-white/80 hover:text-white text-2xl font-bold p-1 transition-colors"
+                  className="flex-shrink-0 ml-2 h-8 w-8 rounded-xl bg-white/15 hover:bg-white/30 flex items-center justify-center text-white transition-colors"
+                  aria-label="Close AI Tutor"
                 >
-                  &times;
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-4 w-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
                 </button>
               </div>
 
-              {/* Chat Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950/50">
+              {/* ─ Messages ─ */}
+              <div className="flex-1 overflow-y-auto py-5 px-4 space-y-5 bg-slate-50 dark:bg-slate-950/40">
                 {tutorMessages.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[88%] rounded-2xl p-4 shadow-md text-sm ${
-                      msg.role === "user" 
-                        ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-br-none font-body shadow-indigo-500/10" 
-                        : "bg-white dark:bg-slate-800/95 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-bl-none font-body leading-relaxed shadow-slate-200/50 dark:shadow-none"
+                  <div key={i} className={`msg-enter flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                    {msg.role === "assistant" && (
+                      <div className="h-7 w-7 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-sm flex-shrink-0 mr-2.5 mt-0.5">🧑‍🏫</div>
+                    )}
+                    <div className={`relative max-w-[82%] rounded-2xl text-sm leading-relaxed ${
+                      msg.role === "user"
+                        ? "bg-indigo-600 text-white rounded-tr-sm px-4 py-3 shadow-md shadow-indigo-500/20"
+                        : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-sm px-4 py-3 shadow-sm"
                     }`}>
-                      {msg.role === "assistant" && (
-                        <div className="flex items-center space-x-1.5 mb-2 pb-1.5 border-b border-slate-100 dark:border-slate-700/60 text-[11px] font-mono font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                          <span>🤖 Course AI Tutor</span>
-                          <span>•</span>
-                          <span className="text-emerald-500 font-semibold">Memory Active</span>
+                      {msg.role === "user" ? (
+                        <p className="font-body font-medium">{msg.content}</p>
+                      ) : msg.isWelcome ? (
+                        <div className="font-body tutor-prose">
+                          <div className="flex items-center space-x-1.5 mb-2.5 text-[10px] uppercase tracking-widest font-bold text-indigo-500 dark:text-indigo-400">
+                            <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3"><circle cx="12" cy="12" r="10"/></svg>
+                            <span>Course AI Tutor</span>
+                          </div>
+                          <p className="text-slate-700 dark:text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: msg.content }} />
+                          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 grid grid-cols-2 gap-1.5">
+                            {[
+                              { icon: "💡", label: "Summarize current chapter", q: "Summarize the current chapter I'm reading" },
+                              { icon: "📖", label: "List all chapters", q: "List all chapters in this course" },
+                              { icon: "💻", label: "Give me a code example", q: "Give me a practical code example from this course" },
+                              { icon: "🧩", label: "What is chapter 5?", q: "What is chapter 5 about in this course?" },
+                            ].map(({icon, label, q}) => (
+                              <button
+                                key={label}
+                                onClick={() => setTutorInput(q)}
+                                className="chip text-left bg-slate-50 dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-700 text-slate-600 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-indigo-300 rounded-xl px-3 py-2 text-[11px] font-medium font-body flex items-center space-x-1.5"
+                              >
+                                <span className="text-base">{icon}</span>
+                                <span>{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="tutor-prose font-body">
+                          {renderContent(msg.content)}
                         </div>
                       )}
-                      {msg.role === "user" ? (
-                        <div>{msg.content}</div>
-                      ) : (
-                        <div>{renderContent(msg.content)}</div>
-                      )}
                     </div>
+                    {msg.role === "user" && (
+                      <div className="h-7 w-7 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ml-2.5 mt-0.5 shadow-md shadow-indigo-500/30">You</div>
+                    )}
                   </div>
                 ))}
+
+                {/* Typing indicator */}
                 {tutorLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-bl-none p-3.5 px-5 shadow-sm flex items-center space-x-3 text-xs text-slate-500 font-mono">
-                      <svg className="animate-spin h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span>AI Tutor is analyzing full syllabus & chapter memory...</span>
+                  <div className="msg-enter flex justify-start">
+                    <div className="h-7 w-7 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-sm flex-shrink-0 mr-2.5">🧑‍🏫</div>
+                    <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm flex items-center space-x-1.5">
+                      <span className="h-2 w-2 rounded-full bg-indigo-400 animate-bounce" style={{animationDelay:"0ms"}}></span>
+                      <span className="h-2 w-2 rounded-full bg-indigo-400 animate-bounce" style={{animationDelay:"150ms"}}></span>
+                      <span className="h-2 w-2 rounded-full bg-indigo-400 animate-bounce" style={{animationDelay:"300ms"}}></span>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Quick Action Prompt Chips */}
-              <div className="px-4 py-2 bg-slate-100 dark:bg-slate-900/80 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center space-x-1.5 overflow-x-auto text-xs">
-                <span className="text-slate-400 font-mono text-[10px] uppercase font-bold mr-1">Suggest:</span>
-                <button 
-                  onClick={() => setTutorInput("Summarize this chapter")}
-                  className="bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 font-medium whitespace-nowrap transition-colors"
-                >
-                  💡 Summarize Chapter
-                </button>
-                <button 
-                  onClick={() => setTutorInput("Explain Chapter 5")}
-                  className="bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 font-medium whitespace-nowrap transition-colors"
-                >
-                  ❓ What is Chapter 5?
-                </button>
-                <button 
-                  onClick={() => setTutorInput("Give me a code example")}
-                  className="bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 font-medium whitespace-nowrap transition-colors"
-                >
-                  💻 Code Example
-                </button>
+              {/* ─ Input ─ */}
+              <div className="flex-shrink-0 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
+                <form onSubmit={handleSendTutor} className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    placeholder="Ask about any chapter, concept or topic…"
+                    value={tutorInput}
+                    onChange={(e) => setTutorInput(e.target.value)}
+                    disabled={tutorLoading}
+                    className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900 outline-none text-sm text-slate-800 dark:text-white placeholder-slate-400 rounded-xl px-4 py-2.5 transition-colors font-body disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={tutorLoading || !tutorInput.trim()}
+                    className="flex-shrink-0 h-10 w-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors shadow-md shadow-indigo-500/20"
+                    aria-label="Send message"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 translate-x-0.5">
+                      <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                  </button>
+                </form>
+                <p className="text-[10px] text-slate-400 dark:text-slate-600 text-center mt-2 font-body">Powered by Groq llama-3.3-70b · Full syllabus memory active</p>
               </div>
-
-              {/* Chat Input */}
-              <form onSubmit={handleSendTutor} className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex space-x-2">
-                <input
-                  type="text"
-                  placeholder="Ask any question about this course or chapter..."
-                  value={tutorInput}
-                  onChange={(e) => setTutorInput(e.target.value)}
-                  disabled={tutorLoading}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 dark:text-white font-body disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  disabled={tutorLoading || !tutorInput.trim()}
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-md shadow-indigo-100 dark:shadow-none flex items-center justify-center"
-                >
-                  Send
-                </button>
-              </form>
             </div>
           )}
 
