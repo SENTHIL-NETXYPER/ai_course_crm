@@ -193,19 +193,11 @@ class GroqService:
                 return chat_completion.choices[0].message.content
             except Exception as e:
                 error_str = str(e)
-                # Handle JSON validation failure by switching to a smarter model first!
+                # Handle JSON validation failure by immediately disabling response_format so our 4-tier custom parser handles it
                 if "json_validate_failed" in error_str or "Failed to generate JSON" in error_str:
-                    if current_idx + 1 < len(fallback_chain):
-                        current_idx += 1
-                        next_model = fallback_chain[current_idx]
-                        logger.warning(f"Groq JSON validation failed on '{active_model}'. Switching to smarter model '{next_model}' (attempt {attempt}/{max_retries})...")
-                        active_model = next_model
-                        continue
-                    elif "response_format" in kwargs:
-                        logger.warning("All models failed JSON validation. Retrying WITHOUT JSON mode...")
+                    if "response_format" in kwargs:
+                        logger.warning(f"Groq JSON validation failed on '{active_model}'. Immediately retrying WITHOUT JSON mode (our 4-tier parser will handle it)...")
                         del kwargs["response_format"]
-                        current_idx = 0
-                        active_model = fallback_chain[0]
                         if attempt < max_retries:
                             continue
                 # Handle rate limit (429), token limits, or model errors with automatic model switching

@@ -65,7 +65,51 @@ def _parse_json(raw_text: str, context: str) -> dict:
 
 
 def parse_writer_response(raw_text: str) -> dict:
-    return _parse_json(raw_text, "Writer")
+    try:
+        return _parse_json(raw_text, "Writer")
+    except ValueError:
+        logger.warning("Standard JSON parsing failed for Writer. Attempting regex structure recovery...")
+        chapter_match = re.search(r'"chapter"\s*:\s*"([^"]+)"', raw_text)
+        chapter = chapter_match.group(1) if chapter_match else "Chapter Lesson"
+        
+        intro_match = re.search(r'"introduction"\s*:\s*"([^"]+)"', raw_text)
+        intro = intro_match.group(1) if intro_match else "Welcome to this chapter."
+        
+        sections = []
+        section_splits = re.split(r'"title"\s*:\s*', raw_text)[1:]
+        for idx, part in enumerate(section_splits):
+            title_match = re.match(r'"([^"]+)"', part)
+            title = title_match.group(1) if title_match else f"Section {idx + 1}"
+            
+            content_match = re.search(r'"content"\s*:\s*"(.*)', part, re.DOTALL)
+            if content_match:
+                content_raw = content_match.group(1)
+                content_clean = re.sub(r'"?\s*\}\s*,\s*(?:\{.*)?$', '', content_raw, flags=re.DOTALL)
+                content_clean = re.sub(r'"?\s*\}\s*\]\s*\}\s*$', '', content_clean, flags=re.DOTALL)
+                content_clean = content_clean.strip()
+                if content_clean.endswith('"'):
+                    content_clean = content_clean[:-1]
+            else:
+                content_clean = part
+                
+            sections.append({
+                "title": title,
+                "content": content_clean,
+                "order": idx + 1
+            })
+            
+        if not sections:
+            sections = [{
+                "title": chapter,
+                "content": raw_text,
+                "order": 1
+            }]
+            
+        return {
+            "chapter": chapter,
+            "introduction": intro,
+            "sections": sections
+        }
 
 
 def parse_reviewer_response(raw_text: str) -> dict:
