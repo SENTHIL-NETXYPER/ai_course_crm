@@ -31,14 +31,30 @@ class ScrapeService:
         return f"{filename}.md"
 
     def _clean_html(self, html_content: str) -> str:
+        # Try trafilatura first if installed for ML-grade noise extraction
+        try:
+            import trafilatura
+            extracted = trafilatura.extract(html_content, include_comments=False, include_tables=True, no_fallback=False)
+            if extracted and len(extracted) > 200:
+                return f"<div>{extracted}</div>"
+        except ImportError:
+            pass
+
         soup = BeautifulSoup(html_content, "html.parser")
-        # Remove navigation, headers, footers, scripts, and styling
-        for tag in ["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe"]:
+        # Remove navigation, headers, footers, scripts, styling, forms, and buttons
+        for tag in ["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe", "form", "svg", "canvas", "button"]:
             for match in soup.find_all(tag):
                 match.decompose()
                 
-        # Try to locate the main content area for cleaner text extraction
-        main_content = soup.find("main") or soup.find("article") or soup.find("div", {"id": "main"}) or soup.find("div", {"class": "main"})
+        # Remove common noisy class/id patterns (cookie banners, ads, sidebars, comments, social share, breadcrumbs)
+        noisy_pattern = re.compile(r'(cookie|banner|ad-|ads-|sidebar|comment|social|share|breadcrumb|menu|popup|modal|newsletter|promo|sponsor)', re.I)
+        for element in soup.find_all(attrs={"class": noisy_pattern}):
+            element.decompose()
+        for element in soup.find_all(attrs={"id": noisy_pattern}):
+            element.decompose()
+                
+        # Locate main content container for cleaner text extraction
+        main_content = soup.find("main") or soup.find("article") or soup.find("div", {"id": re.compile(r'^(main|content|article|post)$', re.I)}) or soup.find("div", {"class": re.compile(r'^(main|content|article|post|body-content)$', re.I)})
         if main_content:
             return str(main_content)
         return str(soup.body or soup)

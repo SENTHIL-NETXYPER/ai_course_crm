@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core.logger import logger
 
 class DatabaseManager:
@@ -71,7 +71,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT OR REPLACE INTO roadmaps (topic, roadmap_json, created_at) VALUES (?, ?, ?)",
-                    (course_id.lower(), json.dumps(roadmap), datetime.utcnow().isoformat())
+                    (course_id.lower(), json.dumps(roadmap), datetime.now(timezone.utc).isoformat())
                 )
                 conn.commit()
         except Exception as e:
@@ -106,7 +106,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT OR REPLACE INTO lessons (topic, lesson_json, created_at) VALUES (?, ?, ?)",
-                    (key, json.dumps(lesson), datetime.utcnow().isoformat())
+                    (key, json.dumps(lesson), datetime.now(timezone.utc).isoformat())
                 )
                 conn.commit()
         except Exception as e:
@@ -134,7 +134,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT OR REPLACE INTO sources (url, markdown_content, scraped_at) VALUES (?, ?, ?)",
-                    (url, content, datetime.utcnow().isoformat())
+                    (url, content, datetime.now(timezone.utc).isoformat())
                 )
                 conn.commit()
         except Exception as e:
@@ -160,7 +160,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, ?)",
-                    (key, value, datetime.utcnow().isoformat())
+                    (key, value, datetime.now(timezone.utc).isoformat())
                 )
                 conn.commit()
         except Exception as e:

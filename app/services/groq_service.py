@@ -18,7 +18,7 @@ class GroqService:
             logger.info("GroqService initialized successfully with API key.")
             self.client = Groq(api_key=self.api_key)
 
-    def generate(self, prompt: str, system_prompt: str = None, model: str = "llama-3.1-8b-instant", response_format: dict = None, max_retries: int = 3) -> str:
+    def generate(self, prompt: str, system_prompt: str = None, model: str = "llama-3.1-8b-instant", response_format: dict = None, max_retries: int = 5) -> str:
         if not self.client:
             logger.info("GroqService (MOCK MODE): Generating mock response for prompt.")
             if "course_name" in (system_prompt or "") or "structured-chat" in prompt:
@@ -184,28 +184,31 @@ class GroqService:
                     if "response_format" in kwargs:
                         del kwargs["response_format"]
                     if attempt < max_retries:
-                        # We can retry immediately without waiting
                         continue
                 # Handle rate limit (429) with smart backoff & model fallback
                 elif "429" in error_str or "rate_limit_exceeded" in error_str:
-                    # If we hit a rate limit on a model other than llama-3.1-8b-instant, switch to 8b-instant
                     if active_model != "llama-3.1-8b-instant":
                         logger.warning(f"Groq rate limit hit for model {active_model}. Falling back to llama-3.1-8b-instant...")
                         active_model = "llama-3.1-8b-instant"
-                        # We can retry immediately with the fallback model
                         continue
 
-                    # Parse the retry-after seconds from the error message
-                    wait_seconds = 15 * attempt  # default: 15s, 30s, 45s
+                    wait_seconds = 12 * attempt  # default backoff: 12s, 24s, 36s...
                     match = re.search(r"try again in (\d+)m?(\d+\.?\d*)s", error_str)
                     if match:
                         mins = int(match.group(1)) if match.group(1) else 0
                         secs = float(match.group(2)) if match.group(2) else 0
                         parsed = int(mins) * 60 + int(secs) + 3  # +3s buffer
-                        wait_seconds = min(parsed, 30)  # cap at 30s max
+                        wait_seconds = min(parsed, 45)  # cap at 45s max
                     if attempt < max_retries:
                         logger.warning(f"Groq rate limit hit (attempt {attempt}/{max_retries}). Waiting {wait_seconds}s before retry...")
                         time.sleep(wait_seconds)
+                        continue
+                # Handle temporary server/connection errors (500, 502, 503, timeout)
+                elif any(code in error_str for code in ["500", "502", "503", "504", "Connection", "Timeout"]):
+                    if attempt < max_retries:
+                        wait_time = 5 * attempt
+                        logger.warning(f"Groq server/network error '{error_str[:50]}' (attempt {attempt}/{max_retries}). Backing off {wait_time}s...")
+                        time.sleep(wait_time)
                         continue
                 logger.error(f"Error calling Groq API (attempt {attempt}/{max_retries}): {e}")
                 if attempt == max_retries:

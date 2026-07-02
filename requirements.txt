@@ -11,3 +11,5 @@ lxml==6.0.3
 python-multipart==0.0.24
 markdownify==0.14.1
 duckduckgo-search==7.5.3
+trafilatura==1.12.0
+pytest==8.3.4

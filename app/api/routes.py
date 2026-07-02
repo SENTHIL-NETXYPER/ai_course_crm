@@ -54,14 +54,35 @@ def slugify(text: str) -> str:
 
 @router.get("/courses", response_model=List[Course])
 async def get_all_courses():
-    """Lists all previously generated courses (stateless mode: always returns empty)."""
-    return []
+    """Lists all previously generated courses from database cache."""
+    try:
+        roadmaps_data = db.get_all_roadmaps()
+        courses = []
+        for item in roadmaps_data:
+            rm = item.get("roadmap", {})
+            if rm and "chapters" in rm:
+                courses.append(Course(
+                    id=rm.get("id", item.get("topic", "course")),
+                    course=rm.get("course", item.get("topic", "course")),
+                    chapters=rm.get("chapters", [])
+                ))
+        return courses
+    except Exception as e:
+        logger.error(f"Failed to fetch courses from database: {e}")
+        return []
 
 
 @router.get("/courses/{course_id}", response_model=Course)
 async def get_course(course_id: str):
-    """Stateless mode: course data is not persisted. Generate via POST /courses/generate."""
-    raise HTTPException(status_code=404, detail="Stateless mode: courses are not stored. Use POST /courses/generate.")
+    """Fetch cached course data from database."""
+    cached_roadmap = db.get_roadmap(course_id)
+    if cached_roadmap and "chapters" in cached_roadmap:
+        return Course(
+            id=cached_roadmap.get("id", course_id),
+            course=cached_roadmap.get("course", course_id),
+            chapters=cached_roadmap.get("chapters", [])
+        )
+    raise HTTPException(status_code=404, detail="Course not found in cache. Generate via POST /courses/generate.")
 
 @router.post("/courses/generate", response_model=CourseWithLessons)
 async def generate_course(request: CourseGenerateRequest):
@@ -69,14 +90,25 @@ async def generate_course(request: CourseGenerateRequest):
         course_id = slugify(request.topic)
         logger.info(f"Generating course syllabus for: {request.topic}")
 
+        # Check database cache first!
+        cached_roadmap = db.get_roadmap(course_id)
+        if cached_roadmap and "chapters" in cached_roadmap:
+            logger.info(f"Cache hit: Loaded roadmap for '{course_id}' from database.")
+            return CourseWithLessons(
+                id=course_id,
+                course=cached_roadmap.get("course", request.topic),
+                chapters=cached_roadmap.get("chapters", []),
+                lessons={}
+            )
+
         # Step 1: Planner
         plan = planner_service.generate_plan(topic=request.topic)
         chapters = plan.get("chapters", [])
         course_name = plan.get("course", request.topic)
 
-        # We return the course outline immediately. 
-        # The frontend will orchestrate the background compilation of each chapter
-        # to avoid Render's 100-second HTTP timeout and Groq rate limits.
+        # Save to database cache
+        db.save_roadmap(course_id, {"id": course_id, "course": course_name, "chapters": chapters})
+
         return CourseWithLessons(
             id=course_id,
             course=course_name,
@@ -101,8 +133,17 @@ async def research_course_concept(course_id: str, request: CourseResearchRequest
 
 @router.get("/chapters/{chapter_id}", response_model=ChapterDetail)
 async def get_chapter(chapter_id: int, course_id: str):
-    """Stateless mode: chapters are not stored. Use POST /chapters/{id}/generate."""
-    raise HTTPException(status_code=404, detail="Stateless mode: chapters are not stored. Use POST /chapters/{id}/generate.")
+    """Fetch cached chapter lesson from database."""
+    cached_lesson = db.get_lesson(course_id, chapter_id)
+    if cached_lesson and "sections" in cached_lesson and cached_lesson["sections"]:
+        return ChapterDetail(
+            chapter_id=chapter_id,
+            course_id=course_id,
+            title=cached_lesson.get("chapter", f"Chapter {chapter_id}"),
+            introduction=cached_lesson.get("introduction", ""),
+            sections=cached_lesson.get("sections", [])
+        )
+    raise HTTPException(status_code=404, detail="Chapter not found in cache. Generate via POST /chapters/{id}/generate.")
 
 
 @router.post("/chapters/{chapter_id}/generate", response_model=ChapterDetail)
@@ -112,6 +153,19 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
         # chapter_title passed directly from frontend, or fall back to "Chapter N"
         chapter_title = request.chapter_title.strip() or f"Chapter {chapter_id}"
         logger.info(f"Compiling chapter {chapter_id} '{chapter_title}' of course '{course_id}'")
+        
+        # Check database cache if regenerate is not requested
+        if not request.regenerate:
+            cached_lesson = db.get_lesson(course_id, chapter_id)
+            if cached_lesson and "sections" in cached_lesson and cached_lesson["sections"]:
+                logger.info(f"Cache hit: Loaded lesson for chapter {chapter_id} of '{course_id}' from database.")
+                return ChapterDetail(
+                    chapter_id=chapter_id,
+                    course_id=course_id,
+                    title=cached_lesson.get("chapter", chapter_title),
+                    introduction=cached_lesson.get("introduction", ""),
+                    sections=cached_lesson.get("sections", [])
+                )
         
         # 1. Research Agent
         urls = []
@@ -214,7 +268,14 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                 "sections": last_lesson.get("sections", []) if last_lesson else []
             }
 
-        # Return directly — no database write
+        # Save compiled lesson to database cache
+        if chapter_detail and chapter_detail.get("sections"):
+            db.save_lesson(course_id, chapter_id, {
+                "chapter": chapter_detail["title"],
+                "introduction": chapter_detail["introduction"],
+                "sections": chapter_detail["sections"]
+            })
+
         return ChapterDetail(**chapter_detail)
     except Exception as e:
         logger.error(f"Failed to compile chapter: {e}")
