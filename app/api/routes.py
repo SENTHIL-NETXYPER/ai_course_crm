@@ -295,7 +295,8 @@ async def standalone_planner(request: CourseGenerateRequest):
 @router.post("/research")
 async def standalone_researcher(request: CourseResearchRequest):
     try:
-        urls = researcher_service.research(topic="General", concept=request.concept)
+        res = researcher_service.research(topic="General", concept=request.concept)
+        urls = res.get("urls", [])
         return {"sources": [{"title": f"Source for {request.concept}", "url": url} for url in urls]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -157,16 +157,32 @@ class GroqService:
 }}"""
             return mock_json
 
+        # Safety check: truncate prompt if over 20,000 chars to avoid exceeding context/token limits
+        if len(prompt) > 20000:
+            logger.warning(f"Prompt length ({len(prompt)}) exceeds 20,000 chars. Truncating to avoid token limit...")
+            prompt = prompt[:20000] + "\n\n[Content truncated for token limits...]"
+
         messages = []
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "system", "content": system_prompt[:4000]})
         messages.append({"role": "user", "content": prompt})
 
         kwargs = {}
         if response_format:
             kwargs["response_format"] = response_format
 
-        active_model = model
+        # Ordered fallback chain of models available on Groq to avoid rate/token limits
+        fallback_chain = [
+            model,
+            "llama-3.1-8b-instant",
+            "llama-3.3-70b-versatile",
+            "llama3-70b-8192",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it"
+        ]
+        fallback_chain = list(dict.fromkeys(fallback_chain))
+        current_idx = 0
+        active_model = fallback_chain[current_idx]
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -178,29 +194,39 @@ class GroqService:
                 return chat_completion.choices[0].message.content
             except Exception as e:
                 error_str = str(e)
-                # Handle JSON validation failure
+                # Handle JSON validation failure by switching to a smarter model first!
                 if "json_validate_failed" in error_str or "Failed to generate JSON" in error_str:
-                    logger.warning(f"Groq JSON validation failed (attempt {attempt}/{max_retries}). Retrying WITHOUT JSON mode...")
-                    if "response_format" in kwargs:
+                    if current_idx + 1 < len(fallback_chain):
+                        current_idx += 1
+                        next_model = fallback_chain[current_idx]
+                        logger.warning(f"Groq JSON validation failed on '{active_model}'. Switching to smarter model '{next_model}' (attempt {attempt}/{max_retries})...")
+                        active_model = next_model
+                        continue
+                    elif "response_format" in kwargs:
+                        logger.warning("All models failed JSON validation. Retrying WITHOUT JSON mode...")
                         del kwargs["response_format"]
-                    if attempt < max_retries:
+                        if attempt < max_retries:
+                            continue
+                # Handle rate limit (429), token limits, or model errors with automatic model switching
+                elif any(err in error_str.lower() for err in ["429", "rate_limit", "tokens per minute", "requests per minute", "decommissioned", "not found", "model", "overloaded", "capacity", "context"]):
+                    if current_idx + 1 < len(fallback_chain):
+                        current_idx += 1
+                        next_model = fallback_chain[current_idx]
+                        logger.warning(f"Groq limit/error on model '{active_model}'. Instantly switching to fallback model '{next_model}' (attempt {attempt}/{max_retries})...")
+                        active_model = next_model
                         continue
-                # Handle rate limit (429) with smart backoff & model fallback
-                elif "429" in error_str or "rate_limit_exceeded" in error_str:
-                    if active_model != "llama-3.1-8b-instant":
-                        logger.warning(f"Groq rate limit hit for model {active_model}. Falling back to llama-3.1-8b-instant...")
-                        active_model = "llama-3.1-8b-instant"
-                        continue
-
-                    wait_seconds = 12 * attempt  # default backoff: 12s, 24s, 36s...
+                    
+                    # If all fallback models exhausted, cycle back to start and apply smart backoff
+                    current_idx = 0
+                    active_model = fallback_chain[0]
+                    wait_seconds = 10 * attempt
                     match = re.search(r"try again in (\d+)m?(\d+\.?\d*)s", error_str)
                     if match:
                         mins = int(match.group(1)) if match.group(1) else 0
                         secs = float(match.group(2)) if match.group(2) else 0
-                        parsed = int(mins) * 60 + int(secs) + 3  # +3s buffer
-                        wait_seconds = min(parsed, 45)  # cap at 45s max
+                        wait_seconds = min(int(mins) * 60 + int(secs) + 2, 30)
                     if attempt < max_retries:
-                        logger.warning(f"Groq rate limit hit (attempt {attempt}/{max_retries}). Waiting {wait_seconds}s before retry...")
+                        logger.warning(f"All Groq fallback models exhausted. Waiting {wait_seconds}s before retrying with '{active_model}'...")
                         time.sleep(wait_seconds)
                         continue
                 # Handle temporary server/connection errors (500, 502, 503, timeout)
