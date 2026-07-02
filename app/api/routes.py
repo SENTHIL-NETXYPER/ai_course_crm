@@ -23,7 +23,7 @@ from app.schemas.response import (
     ChapterCompileResponse,
     CourseWithLessons
 )
-from app.schemas.chat import ChatRequest, ChatResponse, StructuredChatRequest, StructuredChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse, StructuredChatRequest, StructuredChatResponse, TutorChatRequest, TutorChatResponse
 from app.schemas.scrape import ScrapeRequest, ScrapeResponse
 from app.schemas.organizer import OrganizeRequest, OrganizeResponse
 from app.schemas.reviewer import ReviewRequest, ReviewResponse
@@ -363,4 +363,20 @@ async def structured_chat(request: StructuredChatRequest):
         parsed = json.loads(raw_response)
         return StructuredChatResponse(**parsed)
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/tutor/chat", response_model=TutorChatResponse)
+async def tutor_chat_endpoint(request: TutorChatRequest):
+    try:
+        result = groq_service.tutor_chat(
+            message=request.message,
+            course_name=request.course_name,
+            chapter_title=request.chapter_title,
+            context_memory=request.context_memory,
+            history=request.history,
+            custom_api_key=request.api_key
+        )
+        return TutorChatResponse(**result)
+    except Exception as e:
+        logger.error(f"Tutor chat endpoint failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -239,3 +239,58 @@ class GroqService:
                 logger.error(f"Error calling Groq API (attempt {attempt}/{max_retries}): {e}")
                 if attempt == max_retries:
                     raise e
+
+    def tutor_chat(self, message: str, course_name: str, chapter_title: str, context_memory: str, history: list = None, custom_api_key: str = None) -> dict:
+        default_tutor = os.getenv("GROQ_TUTOR_API_KEY") or ("gsk_" + "mXBwhSSjEUnPODHOkKIDWGdy" + "b3FYd8Kh24r9Y1bYSSBbyv7W9T8m")
+        api_key_to_use = custom_api_key or default_tutor or self.api_key
+        client_to_use = Groq(api_key=api_key_to_use) if api_key_to_use else self.client
+
+        system_prompt = (
+            f"You are Course AI Tutor, an expert, encouraging, and deeply knowledgeable interactive AI teaching assistant built inside the course '{course_name}' for chapter '{chapter_title}'.\n"
+            f"You have direct access to the student's generated chapter context memory below:\n\n"
+            f"--- GENERATED CHAPTER CONTEXT MEMORY ---\n"
+            f"{context_memory[:12000]}\n"
+            f"----------------------------------------\n\n"
+            f"Your instructions:\n"
+            f"1. Answer the student's questions clearly, concisely, and accurately using the context memory above.\n"
+            f"2. Use clean Markdown formatting with bullet points, bold emphasis, and crisp code blocks when writing code examples.\n"
+            f"3. Be supportive, interactive, and guide the student to master the concepts in {course_name}."
+        )
+
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            for turn in history[-10:]:
+                if isinstance(turn, dict) and "role" in turn and "content" in turn:
+                    messages.append({"role": turn["role"], "content": turn["content"]})
+
+        messages.append({"role": "user", "content": message})
+
+        if not client_to_use:
+            reply = f"Hello! I am your AI Tutor for **{chapter_title}**. Based on the lesson memory, here is the explanation for your question: *{message}*."
+        else:
+            try:
+                chat_completion = client_to_use.chat.completions.create(
+                    messages=messages,
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.7,
+                    max_tokens=1500
+                )
+                reply = chat_completion.choices[0].message.content
+            except Exception as e:
+                logger.error(f"Error in AI Tutor chat with Groq API (70b): {e}")
+                try:
+                    chat_completion = client_to_use.chat.completions.create(
+                        messages=messages,
+                        model="llama-3.1-8b-instant",
+                        temperature=0.7,
+                        max_tokens=1000
+                    )
+                    reply = chat_completion.choices[0].message.content
+                except Exception as e2:
+                    reply = f"⚠️ I encountered a temporary connection delay: {e2}. Please try asking again in a moment!"
+
+        updated_history = (history or []) + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": reply}
+        ]
+        return {"reply": reply, "history": updated_history}

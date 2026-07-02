@@ -29,6 +29,8 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Marked Markdown Parser -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <!-- Custom Styling -->
   <style>
     body {
@@ -95,7 +97,52 @@
       const [darkMode, setDarkMode] = useState(false);
       const [compileProgress, setCompileProgress] = useState({ text: "", courseId: null });
       const [codeModal, setCodeModal] = useState(null); // { lang, code, output, running }
+      const [tutorOpen, setTutorOpen] = useState(false);
+      const [tutorInput, setTutorInput] = useState("");
+      const [tutorLoading, setTutorLoading] = useState(false);
+      const [tutorMessages, setTutorMessages] = useState([
+        { role: "assistant", content: "👋 **Hello!** I am your **In-Built Course AI Tutor** with *generated context memory*.\n\nI have read and memorized the content of this chapter. Ask me any question, request code examples, or ask for clarifications!" }
+      ]);
       const compileSessionRef = useRef(0);
+
+      const handleSendTutor = async (e) => {
+        if (e) e.preventDefault();
+        if (!tutorInput.trim() || tutorLoading) return;
+        const userMsg = tutorInput.trim();
+        setTutorInput("");
+        const newHistory = [...tutorMessages, { role: "user", content: userMsg }];
+        setTutorMessages(newHistory);
+        setTutorLoading(true);
+        try {
+          const contextText = activeLesson ? 
+            `Course: ${activeCourse?.course || ""}\nChapter: ${activeLesson.chapter}\nIntro: ${activeLesson.introduction}\n\n` + 
+            (activeLesson.sections || []).map(s => `### ${s.title}\n${s.content}`).join("\n\n") 
+            : "No specific lesson loaded yet.";
+            
+          const res = await fetch("/api/tutor/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: userMsg,
+              course_name: activeCourse?.course || "General Course",
+              chapter_title: activeLesson?.chapter || "General Topic",
+              context_memory: contextText,
+              history: newHistory.map(m => ({ role: m.role, content: m.content })),
+              api_key: ""
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setTutorMessages(data.history || [...newHistory, { role: "assistant", content: data.reply }]);
+          } else {
+            setTutorMessages([...newHistory, { role: "assistant", content: "⚠️ Could not reach AI Tutor server. Please try again." }]);
+          }
+        } catch (err) {
+          setTutorMessages([...newHistory, { role: "assistant", content: "⚠️ Network error connecting to AI Tutor." }]);
+        } finally {
+          setTutorLoading(false);
+        }
+      };
 
       useEffect(() => {
         window.openCodeRunner = (lang, encodedCode) => {
@@ -329,54 +376,67 @@
         document.documentElement.classList.toggle('dark');
       };
 
-      // Helper function to format markdown strings cleanly and richly
+      // Helper function to format markdown strings cleanly using marked.js with custom renderer
       const renderContent = (content) => {
         if (!content) return "";
+        if (window.marked) {
+          try {
+            const renderer = new window.marked.Renderer();
+            renderer.code = (code, language) => {
+              const lang = (language || "code").toLowerCase();
+              const encodedCode = encodeURIComponent((code || "").trim());
+              return `<div class="my-6 rounded-2xl overflow-hidden border border-slate-700/80 shadow-2xl bg-slate-900 animate-fadeIn">
+                <div class="bg-slate-800/95 px-4 py-3 flex items-center justify-between border-b border-slate-700/60 text-xs text-slate-300 font-mono">
+                  <span class="flex items-center space-x-2 font-bold">
+                    <span class="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="uppercase tracking-wider text-indigo-300">${lang}</span>
+                  </span>
+                  <div class="flex items-center space-x-2">
+                    <button onclick="window.copyCode(this, '${encodedCode}')" class="hover:text-white px-3 py-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 transition-colors flex items-center space-x-1.5 border border-slate-600/50 text-xs font-semibold">
+                      <span>📋 Copy</span>
+                    </button>
+                    <button onclick="window.openCodeRunner('${lang}', '${encodedCode}')" class="hover:text-white px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold transition-all flex items-center space-x-1.5 shadow-md shadow-indigo-500/20 border border-indigo-500/50 text-xs">
+                      <span>▶️ Run Code</span>
+                    </button>
+                  </div>
+                </div>
+                <pre class="p-6 text-slate-100 font-mono text-sm overflow-x-auto leading-relaxed bg-slate-900/90"><code>${(code || "").trim()}</code></pre>
+              </div>`;
+            };
+            renderer.heading = (text, level) => {
+              // Clean up any stray markdown symbols like ** that might remain inside headings
+              const cleanText = text.replace(/\*\*/g, "").replace(/##+/g, "").trim();
+              if (level === 1) return `<h1 class="text-3xl lg:text-4xl font-extrabold text-slate-900 dark:text-white mt-8 mb-4 tracking-tight font-sans">${cleanText}</h1>`;
+              if (level === 2) return `<h2 class="text-2xl lg:text-3xl font-bold text-slate-800 dark:text-slate-100 mt-8 mb-4 tracking-tight font-sans border-b border-slate-200 dark:border-slate-800 pb-2">${cleanText}</h2>`;
+              if (level === 3) return `<h3 class="text-xl lg:text-2xl font-bold text-indigo-700 dark:text-indigo-400 mt-6 mb-3 font-sans">${cleanText}</h3>`;
+              return `<h4 class="text-lg font-bold text-slate-700 dark:text-slate-300 mt-5 mb-2 font-sans">${cleanText}</h4>`;
+            };
+            renderer.list = (body, ordered) => {
+              const type = ordered ? "ol" : "ul";
+              const className = ordered ? "list-decimal ml-6 my-3 space-y-1 text-slate-700 dark:text-slate-300" : "list-disc ml-6 my-3 space-y-1 text-slate-700 dark:text-slate-300";
+              return `<${type} class="${className}">${body}</${type}>`;
+            };
+            renderer.paragraph = (text) => `<p class="my-3 leading-relaxed font-body text-slate-700 dark:text-slate-300 text-base lg:text-lg">${text}</p>`;
+            
+            window.marked.use({ renderer });
+            const html = window.marked.parse(content);
+            return <div className="space-y-4 leading-relaxed font-body" dangerouslySetInnerHTML={{ __html: html }} />;
+          } catch (e) {
+            console.error("Marked parsing error:", e);
+          }
+        }
+        
+        // Safe fallback formatting if marked is unavailable
         let html = content
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-          
-        // 1. Remove empty or whitespace-only code blocks that cause empty black lines
-        html = html.replace(/```(?:[a-zA-Z0-9_-]+)?\s*```/g, '');
-        
-        // 2. Match fenced code blocks of ANY language with interactive copy/run toolbar
-        html = html.replace(/```(?:([a-zA-Z0-9_-]+))?\s*\n?([\s\S]*?)```/g, (match, lang, code) => {
-          const language = (lang || "code").toLowerCase();
-          const encodedCode = encodeURIComponent(code.trim());
-          return `<div class="my-5 rounded-xl overflow-hidden border border-slate-700/80 shadow-xl bg-slate-900">
-            <div class="bg-slate-800/90 px-4 py-2.5 flex items-center justify-between border-b border-slate-700/60 text-xs text-slate-300 font-mono">
-              <span class="flex items-center space-x-2 font-bold">
-                <span class="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span class="uppercase tracking-wider text-indigo-300">${language}</span>
-              </span>
-              <div class="flex items-center space-x-2">
-                <button onclick="window.copyCode(this, '${encodedCode}')" class="hover:text-white px-2.5 py-1 rounded bg-slate-700/60 hover:bg-slate-700 transition-colors flex items-center space-x-1 border border-slate-600/50">
-                  <span>📋 Copy</span>
-                </button>
-                <button onclick="window.openCodeRunner('${language}', '${encodedCode}')" class="hover:text-white px-3 py-1 rounded bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold transition-all flex items-center space-x-1 shadow-sm border border-indigo-500/50">
-                  <span>▶️ Run Code</span>
-                </button>
-              </div>
-            </div>
-            <pre class="p-5 text-slate-100 font-mono text-sm overflow-x-auto leading-relaxed"><code>${code.trim()}</code></pre>
-          </div>`;
-        });
-        
-        // 3. Inline code blocks
-        html = html.replace(/`([^`]+)`/g, '<code class="bg-slate-100 dark:bg-slate-800 text-pink-600 dark:text-pink-400 px-1.5 py-0.5 rounded font-mono text-sm">$1</code>');
-        
-        // 4. Markdown headings
-        html = html.replace(/###\s*(.*)/g, '<h4 class="text-lg font-bold text-indigo-700 dark:text-indigo-400 mt-5 mb-2">$1</h4>');
-        html = html.replace(/##\s*(.*)/g, '<h3 class="text-xl font-bold text-slate-800 dark:text-slate-200 mt-6 mb-3">$1</h3>');
-        
-        // 5. Bold formatting and bullet lists for richer presentation
-        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-slate-900 dark:text-white">$1</strong>');
-        html = html.replace(/^\s*(?:-|\*)\s+(.*)/gm, '<li class="ml-4 list-disc my-1">$1</li>');
-        
-        // 6. Paragraph line breaks
-        html = html.replace(/\n\n/g, '<p class="my-3 leading-relaxed font-body"></p>');
-        return <div className="space-y-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
+          .replace(/>/g, "&gt;")
+          .replace(/###?\s*\*\*([^*]+)\*\*/g, '<h3 class="text-xl font-bold text-indigo-700 dark:text-indigo-400 mt-6 mb-3 font-sans">$1</h3>')
+          .replace(/###?\s*(.*)/g, '<h3 class="text-xl font-bold text-slate-800 dark:text-slate-200 mt-6 mb-3 font-sans">$1</h3>')
+          .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-slate-900 dark:text-white">$1</strong>')
+          .replace(/^\s*(?:-|\*)\s+(.*)/gm, '<li class="ml-6 list-disc my-1">$1</li>')
+          .replace(/\n\n/g, '<p class="my-3 leading-relaxed font-body"></p>');
+        return <div className="space-y-3 leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
       };
 
       return (
@@ -678,6 +738,94 @@
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* FLOATING AI COURSE TUTOR BUTTON */}
+          <button
+            onClick={() => setTutorOpen(!tutorOpen)}
+            className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-bold px-5 py-3.5 rounded-full shadow-2xl shadow-indigo-500/40 flex items-center space-x-3 transition-all transform hover:scale-105 active:scale-95 border border-white/20"
+            title="Ask In-Built AI Course Tutor"
+          >
+            <span className="text-xl">🤖</span>
+            <span className="font-sans text-sm tracking-wide">AI Course Tutor</span>
+            <span className="flex h-2.5 w-2.5 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+          </button>
+
+          {/* IN-BUILT AI COURSE TUTOR DRAWER */}
+          {tutorOpen && (
+            <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col animate-fadeIn">
+              {/* Drawer Header */}
+              <div className="p-4 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex items-center justify-between shadow-md">
+                <div className="flex items-center space-x-3">
+                  <span className="text-2xl">🤖</span>
+                  <div>
+                    <h3 className="font-bold text-base font-sans tracking-tight">In-Built AI Course Tutor</h3>
+                    <p className="text-xs text-indigo-100 font-mono flex items-center space-x-1.5 mt-0.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <span className="truncate max-w-[200px]">Memory: {activeLesson?.chapter || "Active Course"}</span>
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setTutorOpen(false)}
+                  className="text-white/80 hover:text-white text-2xl font-bold p-1 transition-colors"
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Chat Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950/50">
+                {tutorMessages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[85%] rounded-2xl p-4 shadow-sm text-sm ${
+                      msg.role === "user" 
+                        ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-br-none font-body" 
+                        : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-none font-body leading-relaxed"
+                    }`}>
+                      {msg.role === "user" ? (
+                        <div>{msg.content}</div>
+                      ) : (
+                        <div>{renderContent(msg.content)}</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {tutorLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-bl-none p-3 px-4 shadow-sm flex items-center space-x-2 text-xs text-slate-500 font-mono">
+                      <svg className="animate-spin h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>AI Tutor is analyzing lesson context memory...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Chat Input */}
+              <form onSubmit={handleSendTutor} className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex space-x-2">
+                <input
+                  type="text"
+                  placeholder="Ask a question about this chapter..."
+                  value={tutorInput}
+                  onChange={(e) => setTutorInput(e.target.value)}
+                  disabled={tutorLoading}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 dark:text-white font-body disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={tutorLoading || !tutorInput.trim()}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-md shadow-indigo-100 dark:shadow-none flex items-center justify-center"
+                >
+                  Send
+                </button>
+              </form>
             </div>
           )}
 

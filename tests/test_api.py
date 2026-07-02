@@ -49,3 +49,18 @@ def test_chat_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert "reply" in data
+
+def test_tutor_chat_endpoint():
+    response = client.post("/api/tutor/chat", json={
+        "message": "Explain loops in python",
+        "course_name": "Python 101",
+        "chapter_title": "Loops and Control Flow",
+        "context_memory": "A loop repeats code.",
+        "history": []
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert "reply" in data
+    assert "history" in data
+    assert isinstance(data["history"], list)
+
