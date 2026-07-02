@@ -182,7 +182,11 @@
           });
           if (res.ok) {
             const data = await res.json();
-            setTutorMessages(data.history || [...newHistory, { role: "assistant", content: data.reply }]);
+            // Always append only the AI reply — never use data.history which causes duplicate user messages
+            setTutorMessages(prev => [
+              ...prev,
+              { role: "assistant", content: data.reply || "I'm sorry, I couldn't generate a response." }
+            ]);
           } else {
             setTutorMessages([...newHistory, { role: "assistant", content: "⚠️ Could not reach AI Tutor server. Please try again." }]);
           }
@@ -818,137 +822,142 @@
             </div>
           )}
 
-          {/* ── FLOATING AI TUTOR BUTTON ── */}
+          {/* ─────────────── ROBOT FLOATING CHAT BUTTON ─────────────── */}
           <button
             id="tutor-fab"
-            onClick={() => setTutorOpen(!tutorOpen)}
-            className="tutor-fab fixed bottom-7 right-7 z-40 bg-gradient-to-br from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 active:scale-95 text-white font-semibold pl-4 pr-5 py-3 rounded-full shadow-2xl shadow-indigo-500/30 flex items-center space-x-2.5 transition-transform duration-150"
+            onClick={() => setTutorOpen(o => !o)}
+            className="fixed bottom-6 right-6 z-50 group"
             title="Open AI Course Tutor"
+            aria-label="Open AI Course Tutor"
           >
-            <div className="h-7 w-7 rounded-full bg-white/15 flex items-center justify-center text-base">🧑‍🏫</div>
-            <span className="font-sans text-sm tracking-tight font-bold">AI Tutor</span>
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-            </span>
+            {/* Glow ring behind robot */}
+            <span className="absolute inset-0 rounded-full bg-indigo-400 opacity-30 animate-ping scale-110 group-hover:opacity-50"></span>
+            {/* Robot image */}
+            <img
+              src="/static/robot.png"
+              alt="AI Tutor"
+              className="relative h-16 w-16 rounded-full object-cover shadow-2xl shadow-indigo-500/50 border-2 border-white/80 group-hover:scale-110 transition-transform duration-200 active:scale-95"
+            />
+            {/* Online dot */}
+            <span className="absolute bottom-0.5 right-0.5 h-3.5 w-3.5 bg-emerald-400 border-2 border-white rounded-full shadow-sm"></span>
           </button>
 
-          {/* ── AI COURSE TUTOR PREMIUM DRAWER ── */}
+          {/* ─────────────── FLOATING CHAT POPUP ─────────────── */}
           {tutorOpen && (
-            <div className="tutor-drawer fixed inset-y-0 right-0 z-50 w-[420px] max-w-full flex flex-col bg-white dark:bg-slate-900 border-l border-slate-100 dark:border-slate-800 shadow-2xl">
-
-              {/* ─ Header ─ */}
-              <div className="flex-shrink-0 px-5 py-4 bg-gradient-to-r from-indigo-600 to-violet-700 flex items-center justify-between">
-                <div className="flex items-center space-x-3 min-w-0">
-                  <div className="h-9 w-9 rounded-xl bg-white/20 flex items-center justify-center text-xl shadow-inner flex-shrink-0">🧑‍🏫</div>
-                  <div className="min-w-0">
-                    <h2 className="text-white font-sans font-bold text-sm tracking-tight leading-tight">Course AI Tutor</h2>
-                    <div className="flex items-center space-x-1.5 mt-0.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
-                      <p className="text-indigo-100 text-[11px] font-body truncate">
-                        {activeCourse ? `📚 ${activeCourse.course} — Full Memory Loaded` : "Select a course to activate memory"}
-                      </p>
-                    </div>
-                  </div>
+            <div
+              className="tutor-drawer fixed bottom-28 right-6 z-50 w-[390px] max-w-[calc(100vw-2rem)] flex flex-col rounded-3xl overflow-hidden shadow-2xl shadow-slate-900/25 border border-slate-200/50 dark:border-slate-700/50"
+              style={{ height: '560px' }}
+            >
+              {/* ── Header ── */}
+              <div className="flex-shrink-0 bg-gradient-to-r from-indigo-600 to-violet-700 px-4 py-3 flex items-center space-x-3">
+                <div className="relative flex-shrink-0">
+                  <img src="/static/robot.png" alt="AI Tutor" className="h-10 w-10 rounded-full object-cover border-2 border-white/30 shadow-md" />
+                  <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 bg-emerald-400 border-2 border-indigo-700 rounded-full"></span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-sans font-bold text-sm leading-tight tracking-tight">Course AI Tutor</p>
+                  <p className="text-indigo-200 text-[11px] font-body truncate">
+                    {activeCourse ? `📚 ${activeCourse.course} · Full memory active` : "Select a course to load memory"}
+                  </p>
                 </div>
                 <button
                   onClick={() => setTutorOpen(false)}
-                  className="flex-shrink-0 ml-2 h-8 w-8 rounded-xl bg-white/15 hover:bg-white/30 flex items-center justify-center text-white transition-colors"
-                  aria-label="Close AI Tutor"
+                  className="h-7 w-7 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center text-white transition-colors"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-4 w-4">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-3.5 w-3.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
                   </svg>
                 </button>
               </div>
 
-              {/* ─ Messages ─ */}
-              <div className="flex-1 overflow-y-auto py-5 px-4 space-y-5 bg-slate-50 dark:bg-slate-950/40">
-                {tutorMessages.map((msg, i) => (
-                  <div key={i} className={`msg-enter flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                    {msg.role === "assistant" && (
-                      <div className="h-7 w-7 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-sm flex-shrink-0 mr-2.5 mt-0.5">🧑‍🏫</div>
-                    )}
-                    <div className={`relative max-w-[82%] rounded-2xl text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-indigo-600 text-white rounded-tr-sm px-4 py-3 shadow-md shadow-indigo-500/20"
-                        : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-sm px-4 py-3 shadow-sm"
-                    }`}>
-                      {msg.role === "user" ? (
-                        <p className="font-body font-medium">{msg.content}</p>
-                      ) : msg.isWelcome ? (
-                        <div className="font-body tutor-prose">
-                          <div className="flex items-center space-x-1.5 mb-2.5 text-[10px] uppercase tracking-widest font-bold text-indigo-500 dark:text-indigo-400">
-                            <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3"><circle cx="12" cy="12" r="10"/></svg>
-                            <span>Course AI Tutor</span>
-                          </div>
-                          <p className="text-slate-700 dark:text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: msg.content }} />
-                          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 grid grid-cols-2 gap-1.5">
-                            {[
-                              { icon: "💡", label: "Summarize current chapter", q: "Summarize the current chapter I'm reading" },
-                              { icon: "📖", label: "List all chapters", q: "List all chapters in this course" },
-                              { icon: "💻", label: "Give me a code example", q: "Give me a practical code example from this course" },
-                              { icon: "🧩", label: "What is chapter 5?", q: "What is chapter 5 about in this course?" },
-                            ].map(({icon, label, q}) => (
-                              <button
-                                key={label}
-                                onClick={() => setTutorInput(q)}
-                                className="chip text-left bg-slate-50 dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-700 text-slate-600 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-indigo-300 rounded-xl px-3 py-2 text-[11px] font-medium font-body flex items-center space-x-1.5"
-                              >
-                                <span className="text-base">{icon}</span>
-                                <span>{label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="tutor-prose font-body">
-                          {renderContent(msg.content)}
-                        </div>
+              {/* ── Messages ── */}
+              <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 px-4 py-4 space-y-4">
+                {tutorMessages.map((msg, i) => {
+                  const isBot = msg.role === "assistant";
+                  return (
+                    <div key={i} className={`msg-enter flex items-end space-x-2 ${isBot ? "justify-start" : "justify-end"}`}>
+                      {isBot && (
+                        <img src="/static/robot.png" alt="Bot" className="h-7 w-7 rounded-full object-cover flex-shrink-0 mb-0.5 border border-slate-200 dark:border-slate-700 shadow-sm" />
+                      )}
+                      <div className={`max-w-[80%] rounded-2xl text-sm ${
+                        isBot
+                          ? "bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-bl-sm shadow-sm px-4 py-3"
+                          : "bg-indigo-600 text-white rounded-br-sm shadow-md shadow-indigo-500/20 px-4 py-3"
+                      }`}>
+                        {isBot ? (
+                          msg.isWelcome ? (
+                            <div className="tutor-prose font-body text-slate-700 dark:text-slate-300">
+                              <p className="leading-relaxed" dangerouslySetInnerHTML={{ __html: msg.content }} />
+                              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 grid grid-cols-2 gap-1.5">
+                                {[
+                                  { icon: "💡", label: "Summarize chapter", q: "Summarize the chapter I'm currently reading" },
+                                  { icon: "📖", label: "List all chapters", q: "List all chapters in this course with a brief description of each" },
+                                  { icon: "💻", label: "Code example", q: "Give me a practical code example from this course" },
+                                  { icon: "🧩", label: "Explain chapter 5", q: "What is chapter 5 about in this course?" },
+                                ].map(({ icon, label, q }) => (
+                                  <button
+                                    key={label}
+                                    onClick={() => setTutorInput(q)}
+                                    className="chip text-left bg-slate-50 dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-100 dark:border-slate-700 hover:border-indigo-300 text-slate-600 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-indigo-300 rounded-xl px-2.5 py-2 text-[10px] font-semibold font-body flex items-center space-x-1 transition-all"
+                                  >
+                                    <span className="text-sm">{icon}</span>
+                                    <span className="leading-tight">{label}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="tutor-prose font-body">
+                              {renderContent(msg.content)}
+                            </div>
+                          )
+                        ) : (
+                          <p className="font-body font-medium leading-relaxed">{msg.content}</p>
+                        )}
+                      </div>
+                      {!isBot && (
+                        <div className="h-7 w-7 flex-shrink-0 mb-0.5 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold shadow-md shadow-indigo-500/30">You</div>
                       )}
                     </div>
-                    {msg.role === "user" && (
-                      <div className="h-7 w-7 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ml-2.5 mt-0.5 shadow-md shadow-indigo-500/30">You</div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
 
-                {/* Typing indicator */}
+                {/* Typing dots */}
                 {tutorLoading && (
-                  <div className="msg-enter flex justify-start">
-                    <div className="h-7 w-7 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-sm flex-shrink-0 mr-2.5">🧑‍🏫</div>
-                    <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm flex items-center space-x-1.5">
+                  <div className="msg-enter flex items-end space-x-2">
+                    <img src="/static/robot.png" alt="Bot" className="h-7 w-7 rounded-full object-cover flex-shrink-0 mb-0.5 border border-slate-200 dark:border-slate-700 shadow-sm" />
+                    <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm flex items-center space-x-1.5">
                       <span className="h-2 w-2 rounded-full bg-indigo-400 animate-bounce" style={{animationDelay:"0ms"}}></span>
-                      <span className="h-2 w-2 rounded-full bg-indigo-400 animate-bounce" style={{animationDelay:"150ms"}}></span>
-                      <span className="h-2 w-2 rounded-full bg-indigo-400 animate-bounce" style={{animationDelay:"300ms"}}></span>
+                      <span className="h-2 w-2 rounded-full bg-indigo-400 animate-bounce" style={{animationDelay:"120ms"}}></span>
+                      <span className="h-2 w-2 rounded-full bg-indigo-400 animate-bounce" style={{animationDelay:"240ms"}}></span>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* ─ Input ─ */}
-              <div className="flex-shrink-0 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
+              {/* ── Input bar ── */}
+              <div className="flex-shrink-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 px-3 py-3">
                 <form onSubmit={handleSendTutor} className="flex items-center space-x-2">
                   <input
                     type="text"
-                    placeholder="Ask about any chapter, concept or topic…"
+                    placeholder="Ask me anything about this course…"
                     value={tutorInput}
-                    onChange={(e) => setTutorInput(e.target.value)}
+                    onChange={e => setTutorInput(e.target.value)}
                     disabled={tutorLoading}
-                    className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900 outline-none text-sm text-slate-800 dark:text-white placeholder-slate-400 rounded-xl px-4 py-2.5 transition-colors font-body disabled:opacity-50"
+                    className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900 outline-none rounded-2xl px-4 py-2.5 text-sm text-slate-800 dark:text-white placeholder-slate-400 font-body transition-colors disabled:opacity-50"
+                    autoFocus
                   />
                   <button
                     type="submit"
                     disabled={tutorLoading || !tutorInput.trim()}
-                    className="flex-shrink-0 h-10 w-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors shadow-md shadow-indigo-500/20"
-                    aria-label="Send message"
+                    className="flex-shrink-0 h-10 w-10 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 transition-colors"
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 translate-x-0.5">
-                      <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
                     </svg>
                   </button>
                 </form>
-                <p className="text-[10px] text-slate-400 dark:text-slate-600 text-center mt-2 font-body">Powered by Groq llama-3.3-70b · Full syllabus memory active</p>
+                <p className="text-[9px] text-slate-300 dark:text-slate-600 text-center mt-1.5 font-body tracking-wide">Powered by Groq llama-3.3-70b · Full syllabus memory</p>
               </div>
             </div>
           )}
