@@ -16,6 +16,16 @@ app = FastAPI(
     version="0.1.0"
 )
 
+# Add CORS middleware to allow external websites and third-party backends to call our API
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows any frontend or backend origin to connect
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Register the routes with the api prefix and as root paths
 app.include_router(api_router, prefix="/api")
 app.include_router(api_router)
