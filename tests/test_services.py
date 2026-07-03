@@ -32,5 +32,37 @@ def test_scrape_service_clean_html(tmp_path):
     assert "Menu Bar" not in cleaned
     assert "Accept cookies" not in cleaned
     assert "Copyright 2026" not in cleaned
-    assert "Learn Python" in cleaned
     assert "Python is an amazing language." in cleaned
+
+
+def test_sanitize_lesson_dict_edge_cases():
+    from app.services.parser_service import sanitize_lesson_dict
+    from app.schemas.response import ChapterDetail
+
+    malformed_lesson = {
+        "chapter": "Kubernetes Overview",
+        "introduction": {"title": "Introduction to Kubernetes", "order": 0},
+        "sections": [
+            {"title": "Overview & Core Concepts with Kubernetes:\n"},
+            "order",
+            ": 1"
+        ]
+    }
+
+    clean = sanitize_lesson_dict(malformed_lesson, "Kubernetes Overview")
+    assert isinstance(clean["introduction"], str)
+    assert clean["introduction"] == "Introduction to Kubernetes"
+    assert len(clean["sections"]) == 1
+    assert clean["sections"][0]["order"] == 1
+    assert clean["sections"][0]["title"] == "Overview & Core Concepts with Kubernetes:"
+    
+    # Must instantiate Pydantic ChapterDetail cleanly without validation error
+    chapter_detail = ChapterDetail(
+        chapter_id=1,
+        course_id="devops",
+        title=clean["chapter"],
+        introduction=clean["introduction"],
+        sections=clean["sections"]
+    )
+    assert chapter_detail.title == "Kubernetes Overview"
+

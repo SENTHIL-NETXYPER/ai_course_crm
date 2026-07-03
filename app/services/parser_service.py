@@ -64,9 +64,106 @@ def _parse_json(raw_text: str, context: str) -> dict:
     raise ValueError(f"Failed to parse {context} response as JSON: content is not valid JSON")
 
 
+from typing import Any
+
+
+def sanitize_string(val: Any, default: str = "") -> str:
+    if val is None:
+        return default
+    if isinstance(val, str):
+        return val.strip() or default
+    if isinstance(val, dict):
+        for key in ["content", "description", "summary", "text", "title", "chapter", "name"]:
+            if key in val and val[key] is not None:
+                if isinstance(val[key], str):
+                    return val[key].strip()
+                elif isinstance(val[key], (dict, list)):
+                    return str(val[key]).strip()
+        return str(val).strip()
+    if isinstance(val, list):
+        parts = [sanitize_string(item, "") for item in val if item is not None]
+        return "\n\n".join([p for p in parts if p]).strip() or default
+    return str(val).strip() or default
+
+
+def sanitize_sections(raw_sections: Any, default_title: str = "Lesson Section") -> list:
+    if not isinstance(raw_sections, list):
+        if isinstance(raw_sections, dict):
+            if any(isinstance(v, dict) for v in raw_sections.values()):
+                raw_sections = list(raw_sections.values())
+            else:
+                raw_sections = [raw_sections]
+        elif raw_sections is not None and str(raw_sections).strip():
+            raw_sections = [raw_sections]
+        else:
+            return [{"title": default_title, "content": "No content generated.", "order": 1}]
+    
+    clean_sections = []
+    for idx, item in enumerate(raw_sections):
+        order_val = len(clean_sections) + 1
+        if isinstance(item, dict):
+            title = sanitize_string(item.get("title", f"{default_title} {order_val}"), f"{default_title} {order_val}")
+            content = sanitize_string(item.get("content", item.get("description", item.get("text", ""))), "")
+            if not content and len(title) > 50:
+                content = title
+                title = title.split("\n")[0][:50] + "..."
+            if not content:
+                content = f"Details and examples for {title}."
+            try:
+                order_val = int(item.get("order", order_val))
+            except (ValueError, TypeError):
+                order_val = len(clean_sections) + 1
+            if order_val <= 0:
+                order_val = len(clean_sections) + 1
+            clean_sections.append({
+                "title": title,
+                "content": content,
+                "order": order_val
+            })
+        elif isinstance(item, str):
+            val_str = item.strip()
+            if val_str in ["order", ": 1", ":", "{", "}", "[", "]"] or re.match(r'^[\s:,0-9]+$', val_str):
+                continue
+            clean_sections.append({
+                "title": f"{default_title} {order_val}",
+                "content": val_str,
+                "order": order_val
+            })
+        elif item is not None:
+            clean_sections.append({
+                "title": f"{default_title} {order_val}",
+                "content": str(item),
+                "order": order_val
+            })
+            
+    if not clean_sections:
+        clean_sections = [{"title": default_title, "content": "No content generated.", "order": 1}]
+        
+    for idx, sec in enumerate(clean_sections):
+        sec["order"] = idx + 1
+        
+    return clean_sections
+
+
+def sanitize_lesson_dict(res: Any, default_title: str = "Chapter Lesson") -> dict:
+    if not isinstance(res, dict):
+        res = {}
+    
+    chapter = sanitize_string(res.get("chapter", res.get("title", default_title)), default_title)
+    intro = sanitize_string(res.get("introduction", res.get("intro", "")), f"Welcome to {chapter}.")
+    sections = sanitize_sections(res.get("sections", []), "Lesson Section")
+    
+    return {
+        "chapter": chapter,
+        "introduction": intro,
+        "sections": sections
+    }
+
+
 def parse_writer_response(raw_text: str) -> dict:
     try:
-        return _parse_json(raw_text, "Writer")
+        res = _parse_json(raw_text, "Writer")
+        return sanitize_lesson_dict(res)
     except ValueError:
         logger.warning("Standard JSON parsing failed for Writer. Attempting regex structure recovery...")
         chapter_match = re.search(r'"chapter"\s*:\s*"([^"]+)"', raw_text)
@@ -105,15 +202,25 @@ def parse_writer_response(raw_text: str) -> dict:
                 "order": 1
             }]
             
-        return {
+        return sanitize_lesson_dict({
             "chapter": chapter,
             "introduction": intro,
             "sections": sections
-        }
+        })
 
 
 def parse_reviewer_response(raw_text: str) -> dict:
-    return _parse_json(raw_text, "Reviewer")
+    try:
+        res = _parse_json(raw_text, "Reviewer")
+        if isinstance(res, dict):
+            if "refined_lesson" in res and isinstance(res["refined_lesson"], dict):
+                res["refined_lesson"] = sanitize_lesson_dict(res["refined_lesson"])
+            if "sections" in res:
+                res["sections"] = sanitize_sections(res.get("sections", []))
+        return res
+    except Exception as e:
+        logger.warning(f"Reviewer JSON parse failed: {e}. Returning default dict.")
+        return {}
 
 
 def parse_planner_response(raw_text: str) -> dict:

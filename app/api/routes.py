@@ -36,6 +36,7 @@ from app.agents.writer.service import WriterAgentService
 from app.agents.reviewer.service import ReviewerAgentService
 from app.services.scrape_service import ScrapeService
 from app.services.groq_service import GroqService
+from app.services.parser_service import sanitize_sections, sanitize_lesson_dict
 from app.core.logger import logger
 from app.database.manager import db
 
@@ -136,12 +137,13 @@ async def get_chapter(chapter_id: int, course_id: str):
     """Fetch cached chapter lesson from database."""
     cached_lesson = db.get_lesson(course_id, chapter_id)
     if cached_lesson and "sections" in cached_lesson and cached_lesson["sections"]:
+        clean = sanitize_lesson_dict(cached_lesson, f"Chapter {chapter_id}")
         return ChapterDetail(
             chapter_id=chapter_id,
             course_id=course_id,
-            title=cached_lesson.get("chapter", f"Chapter {chapter_id}"),
-            introduction=cached_lesson.get("introduction", ""),
-            sections=cached_lesson.get("sections", [])
+            title=clean["chapter"],
+            introduction=clean["introduction"],
+            sections=clean["sections"]
         )
     raise HTTPException(status_code=404, detail="Chapter not found in cache. Generate via POST /chapters/{id}/generate.")
 
@@ -159,12 +161,13 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
             cached_lesson = db.get_lesson(course_id, chapter_id)
             if cached_lesson and "sections" in cached_lesson and cached_lesson["sections"]:
                 logger.info(f"Cache hit: Loaded lesson for chapter {chapter_id} of '{course_id}' from database.")
+                clean = sanitize_lesson_dict(cached_lesson, chapter_title)
                 return ChapterDetail(
                     chapter_id=chapter_id,
                     course_id=course_id,
-                    title=cached_lesson.get("chapter", chapter_title),
-                    introduction=cached_lesson.get("introduction", ""),
-                    sections=cached_lesson.get("sections", [])
+                    title=clean["chapter"],
+                    introduction=clean["introduction"],
+                    sections=clean["sections"]
                 )
         
         # 1. Research Agent
@@ -227,12 +230,13 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
 
                 if request.quick_mode:
                     # Skip reviewer in quick mode — accept writer's draft directly
+                    clean = sanitize_lesson_dict(last_lesson, chapter_title)
                     chapter_detail = {
                         "chapter_id": chapter_id,
                         "course_id": course_id,
-                        "title": last_lesson.get("chapter", chapter_title),
-                        "introduction": last_lesson.get("introduction", ""),
-                        "sections": last_lesson.get("sections", [])
+                        "title": clean["chapter"],
+                        "introduction": clean["introduction"],
+                        "sections": clean["sections"]
                     }
                     break
                 review_result = reviewer_service.review_lesson(
@@ -243,12 +247,13 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
                 if review_result.get("approved"):
                     logger.info(f"Lesson approved on attempt {attempt}!")
                     final = review_result.get("refined_lesson") or last_lesson
+                    clean = sanitize_lesson_dict(final, chapter_title)
                     chapter_detail = {
                         "chapter_id": chapter_id,
                         "course_id": course_id,
-                        "title": final.get("chapter", chapter_title),
-                        "introduction": final.get("introduction", ""),
-                        "sections": final.get("sections", [])
+                        "title": clean["chapter"],
+                        "introduction": clean["introduction"],
+                        "sections": clean["sections"]
                     }
                     break
                 else:
@@ -260,12 +265,13 @@ async def generate_chapter_lesson(chapter_id: int, request: ChapterCompileReques
 
         if not chapter_detail:
             logger.warning("Falling back to last draft.")
+            clean = sanitize_lesson_dict(last_lesson or {}, chapter_title)
             chapter_detail = {
                 "chapter_id": chapter_id,
                 "course_id": course_id,
-                "title": last_lesson.get("chapter", chapter_title) if last_lesson else chapter_title,
-                "introduction": last_lesson.get("introduction", "") if last_lesson else "",
-                "sections": last_lesson.get("sections", []) if last_lesson else []
+                "title": clean["chapter"],
+                "introduction": clean["introduction"],
+                "sections": clean["sections"]
             }
 
         # Save compiled lesson to database cache
